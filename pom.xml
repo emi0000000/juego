@@ -1,0 +1,8 @@
+<dependencies>
+    <!-- Esta es la librería de UI que hará que todo se vea moderno y oscuro -->
+    <dependency>
+        <groupId>com.formdev</groupId>
+        <artifactId>flatlaf</artifactId>
+        <version>3.4.1</version>
+    </dependency>
+  </dependencies>
