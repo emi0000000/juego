@@ -1,3 +1,4 @@
+
 import com.formdev.flatlaf.FlatDarkLaf;
 import javax.swing.*;
 import java.awt.*;
@@ -9,8 +10,8 @@ import java.util.Random;
 
 /**
  * PROJECT: ÉXODO SIMULADO [CORE: М.Е.Н.Т.О.С. v8.0]
- * ADVANCED MODULE: Procedural Map, Dynamic Lighting, Particle Weather System
  */
+
 public class ProjectExodusAdvanced extends JFrame {
 
     private CardLayout cardLayout;
@@ -19,11 +20,11 @@ public class ProjectExodusAdvanced extends JFrame {
     private LabyrinthPanel gamePanel;
 
     public ProjectExodusAdvanced() {
-        // Inicialización del Motor de Diseño
+        // Inicialización del Motor de Diseño usando la librería instalada por Maven
         try {
             UIManager.setLookAndFeel(new FlatDarkLaf());
         } catch (Exception ex) {
-            System.err.println("Error al cargar FlatLaf. Usando UI por defecto.");
+            System.err.println("Error al cargar FlatLaf. Revisa tu pom.xml.");
         }
 
         setTitle("PROYECTO ÉXODO [SECURE LINK] - NIGHT PROTOCOL");
@@ -49,13 +50,13 @@ public class ProjectExodusAdvanced extends JFrame {
     public void switchState(String state) {
         cardLayout.show(mainPanel, state);
         if (state.equals("LABYRINTH")) {
-            gamePanel.initNewGame(); // Regenera el mundo
+            gamePanel.initNewGame();
             gamePanel.requestFocusInWindow();
         }
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(ProjectExodusAdvanced::new);
+        SwingUtilities.invokeLater(() -> new ProjectExodusAdvanced());
     }
 }
 
@@ -69,9 +70,8 @@ class MainMenuPanel extends JPanel implements ActionListener {
     public MainMenuPanel(ProjectExodusAdvanced host) {
         this.host = host;
         setLayout(new GridBagLayout());
-        setBackground(new Color(5, 8, 12)); // Tono nocturno frío
+        setBackground(new Color(5, 8, 12)); 
 
-        // Fondo animado simple
         stars = new ArrayList<>();
         for (int i = 0; i < 100; i++) {
             stars.add(new Point(rand.nextInt(1024), rand.nextInt(768)));
@@ -87,7 +87,7 @@ class MainMenuPanel extends JPanel implements ActionListener {
         title.setFont(new Font("Consolas", Font.BOLD, 60));
         title.setForeground(new Color(0, 200, 255));
         
-        JLabel subtitle = new JLabel(">> SIMULACIÓN ESTRUCTURAL PROCEDURAL <<");
+        JLabel subtitle = new JLabel(">> SIMULACIÓN ESTRUCTURAL <<");
         subtitle.setFont(new Font("Consolas", Font.PLAIN, 18));
         subtitle.setForeground(new Color(150, 150, 170));
 
@@ -148,20 +148,17 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
     private ProjectExodusAdvanced host;
     private Timer gameLoop;
     
-    // Configuraciones de Mapa
     private final int TILE_SIZE = 50;
     private final int MAP_WIDTH = 40;
     private final int MAP_HEIGHT = 40;
-    private int[][] map; // 0 = Piso, 1 = Pared, 2 = Finch-Node
+    private int[][] map; 
     
-    // Jugador
     private double playerX, playerY;
     private int playerHealth = 100;
     private int playerCredits = 2500;
     private double playerSpeed = 6.0;
     private boolean up, down, left, right;
     
-    // Partículas y Efectos
     private ArrayList<RainDrop> rainSystem;
     private ArrayList<Trail> playerTrail;
     private Random rand = new Random();
@@ -169,14 +166,14 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
 
     public LabyrinthPanel(ProjectExodusAdvanced host) {
         this.host = host;
-        setBackground(new Color(5, 5, 8)); // Entorno ultra oscuro
+        setBackground(new Color(5, 5, 8)); 
         setFocusable(true);
         addKeyListener(this);
         
         rainSystem = new ArrayList<>();
         playerTrail = new ArrayList<>();
         
-        gameLoop = new Timer(16, this); // ~60 FPS
+        gameLoop = new Timer(16, this); 
     }
 
     public void initNewGame() {
@@ -185,7 +182,6 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         playerY = TILE_SIZE * 2;
         up = down = left = right = false;
         
-        // Inicializar lluvia fría
         rainSystem.clear();
         for(int i = 0; i < 200; i++) {
             rainSystem.add(new RainDrop());
@@ -194,20 +190,16 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         gameLoop.start();
     }
 
-    // ALGORITMO PROCEDURAL BÁSICO
     private void generateProceduralMap() {
         map = new int[MAP_WIDTH][MAP_HEIGHT];
-        // Llenar de paredes
         for (int x = 0; x < MAP_WIDTH; x++) {
             for (int y = 0; y < MAP_HEIGHT; y++) {
                 map[x][y] = 1;
             }
         }
-        // Tallar un camino (Borracho / Random Walk)
         int cx = 2, cy = 2;
         for (int i = 0; i < 800; i++) {
             map[cx][cy] = 0;
-            // Expandir un poco el camino para que no sea tan estrecho
             if(cx+1 < MAP_WIDTH) map[cx+1][cy] = 0;
             if(cy+1 < MAP_HEIGHT) map[cx][cy+1] = 0;
 
@@ -218,7 +210,6 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
             else if (dir == 3 && cy < MAP_HEIGHT - 3) cy += 2;
         }
 
-        // Esparcir "Finch-Nodes" (Coleccionables)
         for(int i = 0; i < 30; i++) {
             int rx = rand.nextInt(MAP_WIDTH);
             int ry = rand.nextInt(MAP_HEIGHT);
@@ -228,7 +219,6 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         }
     }
 
-    // FÍSICAS Y COLISIONES
     @Override
     public void actionPerformed(ActionEvent e) {
         double nextX = playerX;
@@ -239,7 +229,6 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         if (left) nextX -= playerSpeed;
         if (right) nextX += playerSpeed;
 
-        // Detección de Colisiones con las paredes de la cuadrícula
         int tileX = (int) (nextX / TILE_SIZE);
         int tileY = (int) (nextY / TILE_SIZE);
         int tileRight = (int) ((nextX + 30) / TILE_SIZE);
@@ -253,15 +242,13 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
             }
         }
 
-        // Recoger Items
         int centerTileX = (int) ((playerX + 15) / TILE_SIZE);
         int centerTileY = (int) ((playerY + 15) / TILE_SIZE);
         if(map[centerTileX][centerTileY] == 2) {
-            map[centerTileX][centerTileY] = 0; // Borrar item
-            playerCredits += 150; // Sumar créditos
+            map[centerTileX][centerTileY] = 0; 
+            playerCredits += 150; 
         }
 
-        // Actualizar rastro (Trail)
         if (up || down || left || right) {
             animationFrame++;
             if (animationFrame % 3 == 0) {
@@ -269,7 +256,6 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
             }
         }
 
-        // Lógica de partículas (Rastro y Lluvia)
         Iterator<Trail> it = playerTrail.iterator();
         while (it.hasNext()) {
             Trail t = it.next();
@@ -281,48 +267,40 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         repaint();
     }
 
-    // MOTOR DE RENDERIZADO
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // Variables de Cámara (Viewport) - Centra la pantalla en el jugador
         int camX = (int)playerX - getWidth() / 2 + 15;
         int camY = (int)playerY - getHeight() / 2 + 15;
 
-        // Trasladar el mundo según la cámara
         g2d.translate(-camX, -camY);
 
-        // Dibujar Mapa
         for (int x = 0; x < MAP_WIDTH; x++) {
             for (int y = 0; y < MAP_HEIGHT; y++) {
                 if (map[x][y] == 1) {
-                    g2d.setColor(new Color(20, 25, 35)); // Paredes oscuras
+                    g2d.setColor(new Color(20, 25, 35)); 
                     g2d.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    g2d.setColor(new Color(40, 45, 60)); // Borde de pared
+                    g2d.setColor(new Color(40, 45, 60)); 
                     g2d.drawRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                 } else if (map[x][y] == 2) {
-                    // Dibujar Finch-Node (Coleccionable)
                     g2d.setColor(new Color(0, 255, 200));
                     g2d.fillOval(x * TILE_SIZE + 15, y * TILE_SIZE + 15, 20, 20);
                 }
             }
         }
 
-        // Dibujar rastro cibernético
         for(Trail t : playerTrail) {
             g2d.setColor(new Color(0, 200, 255, (int)(t.life * 255)));
             g2d.fillRect((int)t.x, (int)t.y, 20, 5);
         }
 
-        // Dibujar Personaje
         g2d.setColor(new Color(0, 150, 255));
         g2d.fillRect((int)playerX, (int)playerY, 30, 30);
         g2d.setColor(Color.WHITE);
         
-        // Animación de pasos
         if ((animationFrame / 10) % 2 == 0 && (up || down || left || right)) {
             g2d.fillRect((int)playerX, (int)playerY + 30, 10, 10);
             g2d.fillRect((int)playerX + 20, (int)playerY + 30, 10, 10);
@@ -331,39 +309,34 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
             g2d.fillRect((int)playerX + 15, (int)playerY + 30, 10, 10);
         }
 
-        // Deshacer traslación de la cámara para la UI y Luces fijas a la pantalla
         g2d.translate(camX, camY);
 
-        // Dibujar Lluvia digital
         g2d.setColor(new Color(150, 180, 255, 100));
         for(RainDrop r : rainSystem) {
             g2d.drawLine((int)r.x, (int)r.y, (int)r.x - 2, (int)r.y + 10);
         }
 
-        // SISTEMA DE ILUMINACIÓN (Fog of War con Degradado Radial)
         Point2D center = new Point2D.Float(getWidth() / 2f, getHeight() / 2f);
         float[] dist = {0.0f, 0.7f, 1.0f};
         Color[] colors = {
-            new Color(0, 0, 0, 0),       // Centro transparente (Luz)
-            new Color(5, 8, 12, 200),    // Penumbra fría
-            new Color(5, 5, 8, 255)      // Oscuridad total
+            new Color(0, 0, 0, 0),       
+            new Color(5, 8, 12, 200),    
+            new Color(5, 5, 8, 255)      
         };
         RadialGradientPaint p = new RadialGradientPaint(center, 350, dist, colors);
         g2d.setPaint(p);
         g2d.fillRect(0, 0, getWidth(), getHeight());
 
-        // DIBUJAR HUD (Interfaz de Usuario)
         g2d.setColor(new Color(0, 0, 0, 150));
         g2d.fillRect(10, 10, 350, 40);
         g2d.setColor(new Color(0, 255, 150));
         g2d.setFont(new Font("Consolas", Font.BOLD, 18));
-        g2d.drawString("INTEGRIDAD: " + playerHealth + "% | NODOS CRÉDITO: " + playerCredits, 20, 35);
+        g2d.drawString("INTEGRIDAD: " + playerHealth + "% | NODOS FINCH: " + playerCredits, 20, 35);
         
         g2d.setColor(Color.GRAY);
         g2d.drawString("[ESC] ABORTAR SIMULACIÓN", getWidth() - 250, 35);
     }
 
-    // CLASES DE PARTÍCULAS
     class Trail {
         double x, y;
         float life = 1.0f;
@@ -374,18 +347,17 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         double x, y, speed;
         public RainDrop() { reset(); y = rand.nextInt(768); }
         public void reset() {
-            x = rand.nextInt(1024 + 200); // Offset por el ángulo
+            x = rand.nextInt(1024 + 200); 
             y = -20;
             speed = 15 + rand.nextDouble() * 10;
         }
         public void update() {
             y += speed;
-            x -= speed / 3; // Lluvia con viento
+            x -= speed / 3; 
             if (y > 768 || x < 0) reset();
         }
     }
 
-    // CONTROLES
     @Override
     public void keyPressed(KeyEvent e) {
         int key = e.getKeyCode();
