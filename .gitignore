@@ -1,6 +1,12 @@
 # Archivos compilados de Java
 *.class
 
+# Resultados de CREAR-EJECUTABLE.bat
+build/
+ejecutable/
+Exodo.jar
+*.zip
+
 # Partida guardada (es de cada jugador, no del proyecto)
 exodo_save.properties
 

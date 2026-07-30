@@ -14,25 +14,37 @@ import java.awt.event.KeyListener;
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 
 /** Motor del juego: la ciudad, los perros, los jefes y todo lo que ocurre dentro del barrio. */
 public class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
-
-    // Tipos de casilla del mapa
-    private static final int T_CALLE = 0;
-    private static final int T_MONEDA = 2;
-    private static final int T_EDIFICIO = 3;
-    private static final int T_TIENDA = 4;
-    private static final int T_SALIDA = 5;
 
     // Tipos de perro
     private static final int E_CALLEJERO = 0;
     private static final int E_ARMADO = 1;
     private static final int E_CORREDOR = 2;
     private static final int E_BRUTO = 3;
+    private static final int E_ESCUDO = 4;
+    private static final int E_ALFA = 5;
+    private static final int E_KAMIKAZE = 6;
+
+    // Armas
+    private static final int W_GARRAS = 0;
+    private static final int W_ACERO = 1;
+    private static final int W_BALLESTA = 2;
+    private static final int W_PLASMA = 3;
+    private static final int W_MOLOTOV = 4;
 
     private static final int PLAYER_SIZE = 30;
+    private static final int MAX_LEVEL = 6;
+    private static final int SHOP_ITEMS = 10;
+    private static final int MAX_TUNA = 5;
+    private static final int ENEMY_CAP = 95;
+
+    /** Reducción de daño según la armadura equipada. */
+    private static final double[] ARMOR_REDUCTION = {0.0, 0.15, 0.30, 0.45};
+    private static final String[] ARMOR_NAMES = {"SIN ARMADURA", "COLLAR", "CHALECO", "PLACAS"};
 
     private final ProjectExodusAdvanced host;
     private final Timer gameLoop;
@@ -49,7 +61,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     private boolean up, down, left, right;
     private int facing = 1;
     private int currentLevel = 1;
-    private static final int MAX_LEVEL = 6;
+    private int theme = 0;
 
     // Dificultad
     private int pendingDifficulty = 1;
@@ -66,11 +78,12 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     private boolean showMinimap = false;
     private boolean isDead = false;
     private boolean gameWon = false;
+    private boolean darkEnding = false;
     private boolean isTransitioning = false;
     private int transitionTimer = 0;
     private boolean continueRequested = false;
 
-    // Familia de Nox
+    // Familia
     private final String[] familyNames = {"WILL", "NINA", "MITSY"};
     private boolean[] familyRescued = new boolean[3];
     private boolean rescueMessageActive = false;
@@ -102,18 +115,21 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     private int selectedShopItem = 0;
     private String shopMessage = "";
     private int shopMessageTimer = 0;
-    private static final int SHOP_ITEMS = 5;
 
     // Arsenal
     private boolean hasSteelClaws = false;
     private boolean hasCrossbow = false;
     private boolean hasPlasmaLauncher = false;
-    private int activeWeapon = 0;
+    private boolean hasMolotov = false;
+    private boolean hasWhistle = false;
+    private int armorLevel = 0;
+    private int tunaCans = 0;
+    private int activeWeapon = W_GARRAS;
     private boolean isAttacking = false;
     private int attackTimer = 0;
     private int weaponCooldown = 0;
+    private int whistleCooldown = 0;
 
-    // Daño recibido
     private int damageCooldown = 0;
     private int hurtFlash = 0;
 
@@ -125,9 +141,12 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
     private final ArrayList<RainDrop> rainSystem = new ArrayList<>();
     private final ArrayList<Enemy> enemies = new ArrayList<>();
+    private final ArrayList<Enemy> spawnQueue = new ArrayList<>();
     private final ArrayList<Projectile> bullets = new ArrayList<>();
+    private final Particles fx = new Particles();
     private final Random rand = new Random();
     private int animationFrame = 0;
+    private int camX = 0, camY = 0;
 
     public LabyrinthPanel(ProjectExodusAdvanced host) {
         this.host = host;
@@ -168,27 +187,35 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             hasSteelClaws = p.claws;
             hasCrossbow = p.crossbow;
             hasPlasmaLauncher = p.plasma;
+            hasMolotov = p.molotov;
+            hasWhistle = p.whistle;
+            armorLevel = p.armor;
+            tunaCans = p.tuna;
             familyRescued = p.family.clone();
             score = p.score;
             accumulatedMs = p.playTimeMs;
-            activeWeapon = hasPlasmaLauncher ? 3 : hasCrossbow ? 2 : hasSteelClaws ? 1 : 0;
+            activeWeapon = hasPlasmaLauncher ? W_PLASMA : hasCrossbow ? W_BALLESTA
+                         : hasSteelClaws ? W_ACERO : W_GARRAS;
             showingPrologue = false;
         } else {
             currentLevel = 1;
             playerHealth = 100;
             playerMoney = 0;
             sanity = 100;
-            hasSteelClaws = hasCrossbow = hasPlasmaLauncher = false;
+            hasSteelClaws = hasCrossbow = hasPlasmaLauncher = hasMolotov = hasWhistle = false;
+            armorLevel = 0;
+            tunaCans = 0;
             familyRescued = new boolean[3];
             score = 0;
             accumulatedMs = 0;
-            activeWeapon = 0;
+            activeWeapon = W_GARRAS;
             showingPrologue = true;
         }
 
         kills = 0;
         isDead = false;
         gameWon = false;
+        darkEnding = false;
         paused = false;
         showMinimap = false;
         flickerActive = false;
@@ -196,6 +223,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         damageCooldown = 0;
         hurtFlash = 0;
         weaponCooldown = 0;
+        whistleCooldown = 0;
         levelStartMs = System.currentTimeMillis();
 
         loadLevel();
@@ -214,11 +242,14 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     }
 
     private void loadLevel() {
-        generateCityMap();
+        theme = currentLevel - 1;
+        buildLevel();
         playerX = TILE_SIZE * 2;
         playerY = TILE_SIZE * 2;
         up = down = left = right = false;
         bullets.clear();
+        spawnQueue.clear();
+        fx.clear();
         isTransitioning = false;
         isJumpscareActive = false;
         bossDefeated = false;
@@ -247,6 +278,10 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         p.claws = hasSteelClaws;
         p.crossbow = hasCrossbow;
         p.plasma = hasPlasmaLauncher;
+        p.molotov = hasMolotov;
+        p.whistle = hasWhistle;
+        p.armor = armorLevel;
+        p.tuna = tunaCans;
         p.family = familyRescued.clone();
         p.score = score;
         p.playTimeMs = totalPlayTime();
@@ -258,87 +293,87 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     }
 
     // ------------------------------------------------------------------
-    // Generación del barrio
+    // Construcción del barrio
     // ------------------------------------------------------------------
 
-    private void generateCityMap() {
-        map = new int[MAP_WIDTH][MAP_HEIGHT];
+    private void buildLevel() {
+        map = MapGenerator.generate(currentLevel, rand, MAP_WIDTH, MAP_HEIGHT);
         enemies.clear();
         currentBoss = null;
 
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            for (int y = 0; y < MAP_HEIGHT; y++) {
-                if (x == 0 || y == 0 || x == MAP_WIDTH - 1 || y == MAP_HEIGHT - 1) map[x][y] = T_EDIFICIO;
-                else if (x % 7 < 3 && y % 7 < 3) map[x][y] = T_EDIFICIO;
-                else map[x][y] = T_CALLE;
-            }
-        }
-
-        // Plaza inicial despejada
-        for (int i = 1; i <= 3; i++) {
-            for (int j = 1; j <= 3; j++) map[i][j] = T_CALLE;
-        }
-
-        // Callejones aleatorios que rompen la cuadrícula: cada partida se siente distinta
-        for (int i = 0; i < 60; i++) {
-            int ax = rand.nextInt(MAP_WIDTH - 8) + 4;
-            int ay = rand.nextInt(MAP_HEIGHT - 8) + 4;
-            boolean horizontal = rand.nextBoolean();
-            int len = 3 + rand.nextInt(5);
-            for (int k = 0; k < len; k++) {
-                int cx = horizontal ? ax + k : ax;
-                int cy = horizontal ? ay : ay + k;
-                if (cx > 0 && cy > 0 && cx < MAP_WIDTH - 1 && cy < MAP_HEIGHT - 1) map[cx][cy] = T_CALLE;
-            }
-        }
-
-        // Mercado negro: uno junto al inicio y otro a media ciudad
-        map[5][2] = T_TIENDA; map[5][3] = T_TIENDA;
-        map[6][2] = T_TIENDA; map[6][3] = T_TIENDA;
-        map[MAP_WIDTH / 2][MAP_HEIGHT / 2] = T_TIENDA;
-        map[MAP_WIDTH / 2 + 1][MAP_HEIGHT / 2] = T_TIENDA;
+        // Mercado Negro: uno junto al inicio y otro a media ciudad
+        placeShop(6, 2);
+        placeShop(MAP_WIDTH / 2 + 2, MAP_HEIGHT / 2);
 
         // Salida del barrio
-        map[MAP_WIDTH - 3][MAP_HEIGHT - 3] = T_SALIDA;
-        map[MAP_WIDTH - 2][MAP_HEIGHT - 3] = T_SALIDA;
-        map[MAP_WIDTH - 3][MAP_HEIGHT - 2] = T_SALIDA;
-        map[MAP_WIDTH - 2][MAP_HEIGHT - 2] = T_SALIDA;
+        for (int x = MAP_WIDTH - 3; x <= MAP_WIDTH - 2; x++) {
+            for (int y = MAP_HEIGHT - 3; y <= MAP_HEIGHT - 2; y++) map[x][y] = Tiles.EXIT;
+        }
 
-        // Monedas
-        for (int i = 0; i < 220; i++) {
-            int rx = rand.nextInt(MAP_WIDTH - 5) + 1;
-            int ry = rand.nextInt(MAP_HEIGHT - 5) + 1;
-            if (map[rx][ry] == T_CALLE && rx > 4) map[rx][ry] = T_MONEDA;
+        // Monedas repartidas por las calles
+        for (int i = 0; i < 230; i++) {
+            int rx = rand.nextInt(MAP_WIDTH - 4) + 2;
+            int ry = rand.nextInt(MAP_HEIGHT - 4) + 2;
+            if (map[rx][ry] == Tiles.FLOOR && (rx > 5 || ry > 5)) map[rx][ry] = Tiles.COIN;
         }
 
         // Pandilleros
-        int numEnemies = (int) Math.round((20 + currentLevel * 5) * diffEnemyMult);
+        int wanted = (int) Math.round((20 + currentLevel * 5) * diffEnemyMult);
         int placed = 0, tries = 0;
-        while (placed < numEnemies && tries < numEnemies * 12) {
+        while (placed < wanted && tries < wanted * 20) {
             tries++;
             int rx = rand.nextInt(MAP_WIDTH - 12) + 10;
             int ry = rand.nextInt(MAP_HEIGHT - 12) + 10;
-            if (map[rx][ry] != T_CALLE && map[rx][ry] != T_MONEDA) continue;
+            if (!Tiles.walkable(map[rx][ry])) continue;
             enemies.add(new Enemy(rx * TILE_SIZE, ry * TILE_SIZE, pickEnemyType(), currentLevel));
             placed++;
         }
 
-        // Jefe del barrio, custodiando la salida
-        int bx = MAP_WIDTH - 7, by = MAP_HEIGHT - 7;
-        map[bx][by] = T_CALLE;
+        // Jefe, custodiando la salida
+        int bx = MAP_WIDTH - 8, by = MAP_HEIGHT - 8;
+        for (int x = bx - 1; x <= bx + 1; x++) {
+            for (int y = by - 1; y <= by + 1; y++) {
+                if (x > 0 && y > 0 && x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1) map[x][y] = Tiles.FLOOR;
+            }
+        }
         LevelInfo info = levels[currentLevel - 1];
         Enemy boss = new Enemy(bx * TILE_SIZE, by * TILE_SIZE, currentLevel, info.bossName, info.bossBreed);
         enemies.add(boss);
         currentBoss = boss;
     }
 
+    private void placeShop(int sx, int sy) {
+        for (int x = sx; x <= sx + 1; x++) {
+            for (int y = sy; y <= sy + 1; y++) {
+                if (x > 0 && y > 0 && x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1) map[x][y] = Tiles.SHOP;
+            }
+        }
+        // Se despeja el borde para poder llegar caminando
+        for (int x = sx - 1; x <= sx + 2; x++) {
+            for (int y = sy - 1; y <= sy + 2; y++) {
+                if (x > 0 && y > 0 && x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1
+                    && map[x][y] != Tiles.SHOP && Tiles.blocks(map[x][y])) {
+                    map[x][y] = Tiles.FLOOR;
+                }
+            }
+        }
+    }
+
+    /** Cada barrio va sumando tipos de perro nuevos. */
     private int pickEnemyType() {
         int roll = rand.nextInt(100);
-        if (currentLevel <= 1) return roll < 75 ? E_CALLEJERO : E_CORREDOR;
-        if (roll < 38) return E_CALLEJERO;
-        if (roll < 68) return E_ARMADO;
-        if (roll < 88) return E_CORREDOR;
-        return E_BRUTO;
+        switch (currentLevel) {
+            case 1:  return roll < 75 ? E_CALLEJERO : E_CORREDOR;
+            case 2:  return roll < 45 ? E_CALLEJERO : roll < 75 ? E_ARMADO : E_CORREDOR;
+            case 3:  return roll < 34 ? E_CALLEJERO : roll < 60 ? E_ARMADO
+                          : roll < 80 ? E_CORREDOR : E_BRUTO;
+            case 4:  return roll < 26 ? E_CALLEJERO : roll < 50 ? E_ARMADO : roll < 66 ? E_CORREDOR
+                          : roll < 82 ? E_BRUTO : E_ESCUDO;
+            case 5:  return roll < 20 ? E_CALLEJERO : roll < 42 ? E_ARMADO : roll < 56 ? E_CORREDOR
+                          : roll < 72 ? E_BRUTO : roll < 86 ? E_ESCUDO : E_KAMIKAZE;
+            default: return roll < 16 ? E_CALLEJERO : roll < 36 ? E_ARMADO : roll < 48 ? E_CORREDOR
+                          : roll < 64 ? E_BRUTO : roll < 78 ? E_ESCUDO : roll < 90 ? E_KAMIKAZE : E_ALFA;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -351,8 +386,8 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         int x2 = (int) ((nx + size - 1) / TILE_SIZE);
         int y2 = (int) ((ny + size - 1) / TILE_SIZE);
         if (x1 < 0 || y1 < 0 || x2 >= MAP_WIDTH || y2 >= MAP_HEIGHT) return true;
-        return map[x1][y1] == T_EDIFICIO || map[x2][y1] == T_EDIFICIO
-            || map[x1][y2] == T_EDIFICIO || map[x2][y2] == T_EDIFICIO;
+        return Tiles.blocks(map[x1][y1]) || Tiles.blocks(map[x2][y1])
+            || Tiles.blocks(map[x1][y2]) || Tiles.blocks(map[x2][y2]);
     }
 
     private int clampTile(int v, int max) { return Math.max(0, Math.min(max - 1, v)); }
@@ -403,6 +438,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         updateBullets();
         updateEnemies();
         updateAtmosphere();
+        fx.update();
 
         if (playerHealth <= 0) triggerDeath();
 
@@ -416,6 +452,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         if (left) { dx -= 1; facing = 2; }
         if (right) { dx += 1; facing = 3; }
 
+        boolean moving = dx != 0 || dy != 0;
         if (dx != 0 && dy != 0) { dx *= 0.7071; dy *= 0.7071; }
         dx *= playerSpeed;
         dy *= playerSpeed;
@@ -424,18 +461,21 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         if (dx != 0 && !blocked(playerX + dx, playerY, PLAYER_SIZE)) playerX += dx;
         if (dy != 0 && !blocked(playerX, playerY + dy, PLAYER_SIZE)) playerY += dy;
 
+        if (moving && animationFrame % 9 == 0) fx.step(playerX + 12, playerY + 32);
+
         int cx = clampTile((int) ((playerX + 15) / TILE_SIZE), MAP_WIDTH);
         int cy = clampTile((int) ((playerY + 15) / TILE_SIZE), MAP_HEIGHT);
 
-        if (map[cx][cy] == T_MONEDA) {
-            map[cx][cy] = T_CALLE;
+        if (map[cx][cy] == Tiles.COIN) {
+            map[cx][cy] = Tiles.FLOOR;
             playerMoney += 50;
             score += 25;
+            fx.text(playerX + 8, playerY - 6, "+$50", new Color(255, 200, 70), 15);
             AudioEngine.play("coin", 0.7);
         }
 
         nearExitLocked = false;
-        if (map[cx][cy] == T_SALIDA) {
+        if (map[cx][cy] == Tiles.EXIT) {
             if (bossDefeated) {
                 if (currentLevel >= MAX_LEVEL) {
                     triggerVictory();
@@ -454,9 +494,9 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         }
 
         nearStore = false;
-        for (int i = -1; i <= 1 && !nearStore; i++) {
-            for (int j = -1; j <= 1; j++) {
-                if (map[clampTile(cx + i, MAP_WIDTH)][clampTile(cy + j, MAP_HEIGHT)] == T_TIENDA) {
+        for (int i = -2; i <= 2 && !nearStore; i++) {
+            for (int j = -2; j <= 2; j++) {
+                if (map[clampTile(cx + i, MAP_WIDTH)][clampTile(cy + j, MAP_HEIGHT)] == Tiles.SHOP) {
                     nearStore = true;
                     break;
                 }
@@ -465,6 +505,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
         if (isAttacking && --attackTimer <= 0) isAttacking = false;
         if (weaponCooldown > 0) weaponCooldown--;
+        if (whistleCooldown > 0) whistleCooldown--;
         if (damageCooldown > 0) damageCooldown--;
         if (hurtFlash > 0) hurtFlash--;
     }
@@ -479,20 +520,27 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
             int tx = clampTile((int) (p.x / TILE_SIZE), MAP_WIDTH);
             int ty = clampTile((int) (p.y / TILE_SIZE), MAP_HEIGHT);
-            if (p.life <= 0 || map[tx][ty] == T_EDIFICIO) { it.remove(); continue; }
+
+            if (p.life <= 0 || Tiles.blocks(map[tx][ty])) {
+                if (p.molotov) explode(p.x, p.y, 110, 90);
+                else fx.hit(p.x, p.y, new Color(200, 200, 210));
+                it.remove();
+                continue;
+            }
 
             boolean hit = false;
             if (p.isEnemyBullet) {
                 if (Point2D.distance(p.x, p.y, playerX + 15, playerY + 15) < 20) {
-                    damagePlayer((int) Math.round(p.damage * diffDmgMult), false);
+                    damagePlayer(p.damage, false);
+                    fx.hit(p.x, p.y, new Color(255, 90, 60));
                     hit = true;
                 }
             } else {
                 for (Enemy en : enemies) {
                     double reach = en.size * 0.75;
                     if (Point2D.distance(p.x, p.y, en.x + en.size / 2.0, en.y + en.size / 2.0) < reach) {
-                        en.hp -= p.damage;
-                        AudioEngine.play("hit", 0.5);
+                        if (p.molotov) explode(p.x, p.y, 110, 90);
+                        else hurtEnemy(en, p.damage, p.x, p.y);
                         hit = true;
                         break;
                     }
@@ -500,6 +548,58 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             }
             if (hit) it.remove();
         }
+    }
+
+    /** Daño en área del molotov y del cachorro kamikaze. */
+    private void explode(double x, double y, double radius, int damage) {
+        fx.explosion(x, y, radius / 110.0);
+        shakeFrames = 16;
+        shakeMagnitude = 9;
+        AudioEngine.play("boom");
+        for (Enemy en : enemies) {
+            double d = Point2D.distance(x, y, en.x + en.size / 2.0, en.y + en.size / 2.0);
+            if (d < radius) {
+                int dmg = (int) (damage * (1 - d / radius * 0.55));
+                en.hp -= dmg;               // la explosión ignora el escudo
+                fx.text(en.x, en.y - 18, String.valueOf(dmg), new Color(255, 170, 60), 15);
+            }
+        }
+    }
+
+    /** Aplica daño a un perro teniendo en cuenta el escudo, que solo protege de frente. */
+    private void hurtEnemy(Enemy en, int damage, double fromX, double fromY) {
+        int dealt = damage;
+        boolean blockedByShield = false;
+
+        if (en.shield) {
+            double ang = Math.atan2(fromY - (en.y + en.size / 2.0), fromX - (en.x + en.size / 2.0));
+            double facingAng = en.facing == 3 ? 0 : en.facing == 1 ? Math.PI / 2
+                             : en.facing == 2 ? Math.PI : -Math.PI / 2;
+            double diff = Math.abs(normalizeAngle(ang - facingAng));
+            if (diff < Math.PI / 2.2) {
+                dealt = Math.max(1, (int) (damage * 0.15));
+                blockedByShield = true;
+            }
+        }
+
+        en.hp -= dealt;
+        en.hurtFlash = 6;
+
+        if (blockedByShield) {
+            fx.hit(fromX, fromY, new Color(200, 220, 255));
+            fx.text(en.x, en.y - 18, "BLOQUEADO", new Color(160, 190, 230), 13);
+            AudioEngine.play("clang", 0.7);
+        } else {
+            fx.hit(fromX, fromY, new Color(255, 190, 120));
+            fx.text(en.x + rand.nextInt(14), en.y - 18, String.valueOf(dealt), Color.WHITE, 15);
+            AudioEngine.play("hit", 0.5);
+        }
+    }
+
+    private static double normalizeAngle(double a) {
+        while (a > Math.PI) a -= Math.PI * 2;
+        while (a < -Math.PI) a += Math.PI * 2;
+        return a;
     }
 
     private void updateEnemies() {
@@ -520,40 +620,20 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             Enemy en = it.next();
 
             if (en.hp <= 0) {
-                kills++;
-                if (en.isBoss) {
-                    playerMoney += 500;
-                    score += 2000;
-                    bossDefeated = true;
-                    currentBoss = null;
-                    sanity = Math.min(100, sanity + 25);
-                    AudioEngine.setBossMode(false);
-                    AudioEngine.play("door");
-                    String target = levels[currentLevel - 1].rescueTarget;
-                    if (target != null) {
-                        for (int k = 0; k < familyNames.length; k++) {
-                            if (familyNames[k].equals(target)) familyRescued[k] = true;
-                        }
-                        rescueMessageActive = true;
-                        rescueMessageTimer = 160;
-                        rescueMessageText = "¡HAS RESCATADO A " + target + "!";
-                        score += 1500;
-                        AudioEngine.play("rescue");
-                    }
-                    saveCheckpoint();
-                } else {
-                    playerMoney += en.reward;
-                    score += en.reward;
-                    AudioEngine.play("hit", 0.8);
-                }
+                onEnemyDown(en);
                 it.remove();
                 continue;
+            }
+
+            if (en.hurtFlash > 0) en.hurtFlash--;
+            if (en.stunTimer > 0) {
+                en.stunTimer--;
+                continue;                       // aturdido por el silbato: no se mueve ni ataca
             }
 
             double dist = Point2D.distance(playerX, playerY, en.x, en.y);
             if (dist < 280) enemyNearby = true;
 
-            // Susto: un perro aparece de golpe entre las sombras
             if (!en.isBoss && dist < 130 && !isJumpscareActive && rand.nextInt(420) == 3) {
                 triggerJumpscare();
                 damagePlayer((int) Math.round(10 * diffDmgMult), true);
@@ -565,13 +645,73 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
                 AudioEngine.play("bark", 0.45);
             }
 
+            // El alfa aúlla y llama refuerzos
+            if (en.type == E_ALFA && dist < 520 && --en.specialCooldown <= 0) {
+                en.specialCooldown = 400;
+                AudioEngine.play("howl", 0.8);
+                fx.text(en.x, en.y - 26, "¡REFUERZOS!", new Color(255, 120, 60), 14);
+                if (enemies.size() + spawnQueue.size() < ENEMY_CAP) {
+                    for (int k = 0; k < 2; k++) {
+                        spawnQueue.add(new Enemy(en.x + rand.nextInt(90) - 45,
+                                                 en.y + rand.nextInt(90) - 45, E_CALLEJERO, currentLevel));
+                    }
+                }
+            }
+
+            // El kamikaze se lanza y explota
+            if (en.type == E_KAMIKAZE && dist < 46) {
+                explode(en.x + en.size / 2.0, en.y + en.size / 2.0, 105, 55);
+                damagePlayer((int) Math.round(30 * diffDmgMult), false);
+                en.hp = 0;
+                en.exploded = true;
+                continue;
+            }
+
             moveEnemy(en, dist);
             enemyAttacks(en, dist);
+        }
+
+        if (!spawnQueue.isEmpty()) {
+            enemies.addAll(spawnQueue);
+            spawnQueue.clear();
         }
 
         sanity += enemyNearby ? -0.05 : 0.03;
         sanity = Math.max(0, Math.min(100, sanity));
         AudioEngine.setTension(1.0 - sanity / 100.0);
+    }
+
+    private void onEnemyDown(Enemy en) {
+        kills++;
+        fx.death(en.x + en.size / 2.0, en.y + en.size / 2.0, en.bodyColor);
+
+        if (en.isBoss) {
+            playerMoney += 500;
+            score += 2000;
+            bossDefeated = true;
+            currentBoss = null;
+            sanity = Math.min(100, sanity + 25);
+            AudioEngine.setBossMode(false);
+            AudioEngine.play("door");
+            explode(en.x + en.size / 2.0, en.y + en.size / 2.0, 60, 0);
+
+            String target = levels[currentLevel - 1].rescueTarget;
+            if (target != null) {
+                for (int k = 0; k < familyNames.length; k++) {
+                    if (familyNames[k].equals(target)) familyRescued[k] = true;
+                }
+                rescueMessageActive = true;
+                rescueMessageTimer = 160;
+                rescueMessageText = "¡HAS RESCATADO A " + target + "!";
+                score += 1500;
+                AudioEngine.play("rescue");
+            }
+            saveCheckpoint();
+        } else if (!en.exploded) {
+            playerMoney += en.reward;
+            score += en.reward;
+            fx.text(en.x, en.y - 30, "+$" + en.reward, new Color(255, 200, 70), 15);
+        }
     }
 
     private void moveEnemy(Enemy en, double dist) {
@@ -592,26 +732,36 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
                 AudioEngine.play("growl", 0.5);
             }
 
-            // Ráfaga circular de balas
             if (--en.specialCooldown <= 0 && dist < 520) {
                 en.specialCooldown = 240;
                 double bx = en.x + en.size / 2.0, by = en.y + en.size / 2.0;
                 for (int i = 0; i < 12; i++) {
-                    double angle = Math.PI * 2 * i / 12.0;
-                    bullets.add(new Projectile(bx, by, angle, 6.0, 14, true));
+                    bullets.add(new Projectile(bx, by, Math.PI * 2 * i / 12.0, 6.0, 14, true));
                 }
+                fx.explosion(bx, by, 0.4);
                 AudioEngine.play("plasma", 0.5);
             }
         }
 
-        double vx = 0, vy = 0;
-        if (en.x + 6 < playerX) vx = speed;
-        else if (en.x - 6 > playerX) vx = -speed;
-        if (en.y + 6 < playerY) vy = speed;
-        else if (en.y - 6 > playerY) vy = -speed;
+        double vx = Math.signum(playerX - en.x) * speed;
+        double vy = Math.signum(playerY - en.y) * speed;
 
-        if (vx != 0 && !blocked(en.x + vx, en.y, en.size)) en.x += vx;
-        if (vy != 0 && !blocked(en.x, en.y + vy, en.size)) en.y += vy;
+        // Rodear esquinas: si se queda pegado a un muro, camina de lado un rato
+        if (en.detourTimer > 0) {
+            en.detourTimer--;
+            double tmp = vx;
+            vx = -vy * en.detourDir;
+            vy = tmp * en.detourDir;
+        }
+
+        boolean moved = false;
+        if (vx != 0 && !blocked(en.x + vx, en.y, en.size)) { en.x += vx; moved = true; }
+        if (vy != 0 && !blocked(en.x, en.y + vy, en.size)) { en.y += vy; moved = true; }
+
+        if (!moved && en.detourTimer <= 0) {
+            en.detourDir = rand.nextBoolean() ? 1 : -1;
+            en.detourTimer = 32;
+        }
 
         if (vx > 0) en.facing = 3;
         else if (vx < 0) en.facing = 2;
@@ -623,12 +773,15 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         int fireInterval = en.isBoss ? 42 : 85;
         if (en.hasGun && dist < 430 && animationFrame % fireInterval == 0) {
             int dmg = en.isBoss ? 20 : 13;
-            bullets.add(new Projectile(en.x + en.size / 2.0, en.y + en.size / 2.0,
-                                       playerX + 15, playerY + 15, en.isBoss ? 9.0 : 7.5, dmg, true));
+            double bx = en.x + en.size / 2.0, by = en.y + en.size / 2.0;
+            bullets.add(new Projectile(bx, by, playerX + 15, playerY + 15, en.isBoss ? 9.0 : 7.5, dmg, true));
+            fx.muzzle(bx, by, Math.atan2(playerY - by, playerX - bx), new Color(255, 170, 60));
             AudioEngine.play("shoot", 0.30);
         }
 
-        double contact = en.isBoss ? en.size * 0.85 : en.size * 0.9;
+        if (en.type == E_KAMIKAZE) return;
+
+        double contact = en.size * 0.9;
         if (dist < contact) {
             int dmg = (int) Math.round(en.contactDamage * diffDmgMult);
             if (damagePlayer(dmg, true) && en.isBoss) {
@@ -641,10 +794,15 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     /** @return true si el golpe realmente se aplicó (no estaba en invulnerabilidad). */
     private boolean damagePlayer(int amount, boolean respectCooldown) {
         if (respectCooldown && damageCooldown > 0) return false;
-        playerHealth -= amount;
+
+        int reduced = (int) Math.round(amount * (1 - ARMOR_REDUCTION[Math.min(3, armorLevel)]));
+        reduced = Math.max(1, reduced);
+
+        playerHealth -= reduced;
         damageCooldown = 26;
         hurtFlash = 12;
         sanity = Math.max(0, sanity - 1.5);
+        fx.text(playerX + 4, playerY - 12, "-" + reduced, new Color(255, 80, 80), 16);
         AudioEngine.play("hurt", 0.6);
         return true;
     }
@@ -662,6 +820,24 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
         if (shakeFrames > 0) shakeFrames--;
         for (RainDrop r : rainSystem) r.update();
+
+        // Salpicaduras de lluvia alrededor de Nox
+        for (int i = 0; i < 2; i++) {
+            double sx = playerX + rand.nextInt(900) - 450;
+            double sy = playerY + rand.nextInt(700) - 350;
+            int tx = clampTile((int) (sx / TILE_SIZE), MAP_WIDTH);
+            int ty = clampTile((int) (sy / TILE_SIZE), MAP_HEIGHT);
+            if (Tiles.walkable(map[tx][ty])) fx.splash(sx, sy);
+        }
+
+        // Brasas de los bidones encendidos del basurero
+        if (theme == 0 && animationFrame % 3 == 0) {
+            int tx = clampTile((int) (playerX / TILE_SIZE) + rand.nextInt(16) - 8, MAP_WIDTH);
+            int ty = clampTile((int) (playerY / TILE_SIZE) + rand.nextInt(12) - 6, MAP_HEIGHT);
+            if (map[tx][ty] == Tiles.PROP && Sprites.hash(tx, ty) % 3 == 0) {
+                fx.ember(tx * TILE_SIZE + TILE_SIZE / 2.0, ty * TILE_SIZE + TILE_SIZE / 2.0);
+            }
+        }
     }
 
     private void triggerJumpscare() {
@@ -683,10 +859,12 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
     private void triggerVictory() {
         gameWon = true;
+        // El precio de la cordura: si Nox llega destrozado por dentro, gana pero se pierde a sí mismo
+        darkEnding = sanity < 45;
         score += 5000 + (int) (sanity * 20);
         accumulatedMs = totalPlayTime();
         AudioEngine.setBossMode(false);
-        AudioEngine.play("victory");
+        AudioEngine.play(darkEnding ? "darkending" : "victory");
         SaveManager.submitScoreAsync("NOX", score, currentLevel, difficulty);
         SaveManager.deleteSave();
     }
@@ -717,19 +895,21 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             shakeY = rand.nextInt(shakeMagnitude * 2 + 1) - shakeMagnitude;
         }
 
-        int camX = (int) playerX - getWidth() / 2 + 15 + shakeX;
-        int camY = (int) playerY - getHeight() / 2 + 15 + shakeY;
+        camX = (int) playerX - getWidth() / 2 + 15 + shakeX;
+        camY = (int) playerY - getHeight() / 2 + 15 + shakeY;
         camX = Math.max(0, Math.min(camX, MAP_WIDTH * TILE_SIZE - getWidth()));
         camY = Math.max(0, Math.min(camY, MAP_HEIGHT * TILE_SIZE - getHeight()));
 
         g2d.translate(-camX, -camY);
-        drawWorld(g2d, info, camX, camY);
+        drawWorld(g2d);
         drawActors(g2d, info);
+        fx.draw(g2d);
         g2d.translate(camX, camY);
 
         // La linterna sigue a Nox: en los bordes del mapa la cámara se detiene
         // pero el gato se sigue moviendo, así que la luz no puede quedarse fija en el centro.
         drawWeather(g2d, info, (int) playerX - camX + 15, (int) playerY - camY + 15);
+        drawLights(g2d);
         drawHud(g2d, info);
 
         if (showMinimap) drawMinimap(g2d);
@@ -744,30 +924,35 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         if (paused) drawPause(g2d);
     }
 
-    private void drawWorld(Graphics2D g2d, LevelInfo info, int camX, int camY) {
-        int x0 = Math.max(0, camX / TILE_SIZE - 1);
-        int y0 = Math.max(0, camY / TILE_SIZE - 1);
-        int x1 = Math.min(MAP_WIDTH, (camX + getWidth()) / TILE_SIZE + 2);
-        int y1 = Math.min(MAP_HEIGHT, (camY + getHeight()) / TILE_SIZE + 2);
+    private int viewX0() { return Math.max(0, camX / TILE_SIZE - 1); }
+    private int viewY0() { return Math.max(0, camY / TILE_SIZE - 1); }
+    private int viewX1() { return Math.min(MAP_WIDTH, (camX + getWidth()) / TILE_SIZE + 2); }
+    private int viewY1() { return Math.min(MAP_HEIGHT, (camY + getHeight()) / TILE_SIZE + 2); }
 
-        for (int x = x0; x < x1; x++) {
-            for (int y = y0; y < y1; y++) {
-                switch (map[x][y]) {
-                    case T_EDIFICIO:
-                        Sprites.drawBuilding(g2d, x, y, TILE_SIZE, info.bldg1, info.bldg2, animationFrame);
-                        break;
-                    case T_TIENDA:
+    private void drawWorld(Graphics2D g2d) {
+        for (int x = viewX0(); x < viewX1(); x++) {
+            for (int y = viewY0(); y < viewY1(); y++) {
+                int px = x * TILE_SIZE, py = y * TILE_SIZE;
+                int tile = map[x][y];
+                int variant = Sprites.hash(x, y) % Sprites.VARIANTS;
+
+                switch (tile) {
+                    case Tiles.SHOP:
                         Sprites.drawStore(g2d, x, y, TILE_SIZE, animationFrame);
                         break;
-                    case T_SALIDA:
+                    case Tiles.EXIT:
                         Sprites.drawExit(g2d, x, y, TILE_SIZE, bossDefeated, animationFrame);
                         break;
-                    case T_MONEDA:
-                        Sprites.drawGround(g2d, x, y, TILE_SIZE, info.street, animationFrame);
-                        Sprites.drawCoin(g2d, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, animationFrame);
+                    case Tiles.COIN:
+                        g2d.drawImage(Sprites.tile(Tiles.FLOOR, theme, variant, TILE_SIZE), px, py, null);
+                        Sprites.drawCoin(g2d, px, py, TILE_SIZE, animationFrame);
+                        break;
+                    case Tiles.WATER:
+                        g2d.drawImage(Sprites.tile(Tiles.WATER, theme, variant, TILE_SIZE), px, py, null);
+                        Sprites.waterShimmer(g2d, px, py, TILE_SIZE, x, y, animationFrame);
                         break;
                     default:
-                        Sprites.drawGround(g2d, x, y, TILE_SIZE, info.street, animationFrame);
+                        g2d.drawImage(Sprites.tile(tile, theme, variant, TILE_SIZE), px, py, null);
                 }
             }
         }
@@ -775,9 +960,11 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
     private void drawActors(Graphics2D g2d, LevelInfo info) {
         for (Enemy en : enemies) {
-            Color body = en.isBoss ? info.bossColor : en.bodyColor;
+            Color body = en.hurtFlash > 0 ? new Color(255, 210, 210)
+                       : en.isBoss ? info.bossColor : en.bodyColor;
             Sprites.drawDog(g2d, (int) en.x, (int) en.y, en.size, body, en.breed,
-                            en.hasGun, en.isBoss, en.facing, animationFrame);
+                            en.hasGun, en.isBoss, en.facing, animationFrame,
+                            en.shield, en.stunTimer > 0);
 
             if (en.isBoss) {
                 g2d.setColor(Color.WHITE);
@@ -786,7 +973,6 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
                 g2d.drawString(en.name, (int) en.x + en.size / 2 - w / 2, (int) en.y - 26);
             }
 
-            // Barra de vida
             int barW = en.size;
             g2d.setColor(new Color(0, 0, 0, 200));
             g2d.fillRect((int) en.x, (int) en.y - 14, barW, 6);
@@ -796,18 +982,19 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         }
 
         for (Projectile p : bullets) {
-            Color c = p.isEnemyBullet ? new Color(255, 70, 50) : new Color(120, 230, 255);
+            Color c = p.molotov ? new Color(255, 150, 40)
+                    : p.isEnemyBullet ? new Color(255, 70, 50) : new Color(120, 230, 255);
             g2d.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 70));
-            g2d.fillOval((int) p.x - 5, (int) p.y - 5, 20, 20);
+            g2d.fillOval((int) p.x - 6, (int) p.y - 6, 22, 22);
             g2d.setColor(c);
             g2d.fillOval((int) p.x, (int) p.y, 10, 10);
         }
 
         boolean moving = up || down || left || right;
         Sprites.drawNox(g2d, (int) playerX, (int) playerY, facing, animationFrame,
-                        moving, isAttacking, hurtFlash > 0);
+                        moving, isAttacking, hurtFlash > 0, armorLevel);
 
-        if (isAttacking && activeWeapon < 2) {
+        if (isAttacking && activeWeapon <= W_ACERO) {
             Sprites.drawClawSlash(g2d, (int) playerX + 15, (int) playerY + 15,
                                   facing, activeWeapon, animationFrame);
         }
@@ -819,7 +1006,6 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             g2d.drawLine((int) r.x, (int) r.y, (int) r.x - 3, (int) r.y + 18);
         }
 
-        // Viñeta: la oscuridad se cierra cuando baja la cordura
         Point2D center = new Point2D.Float(lightX, lightY);
         float radius = (float) (330 + sanity * 1.9);
         try {
@@ -839,6 +1025,32 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         }
     }
 
+    /** Focos de luz que se dibujan encima de la oscuridad: neones, fuego y la salida. */
+    private void drawLights(Graphics2D g2d) {
+        for (int x = viewX0(); x < viewX1(); x++) {
+            for (int y = viewY0(); y < viewY1(); y++) {
+                int sx = x * TILE_SIZE + TILE_SIZE / 2 - camX;
+                int sy = y * TILE_SIZE + TILE_SIZE / 2 - camY;
+
+                if (map[x][y] == Tiles.SHOP) {
+                    int pulse = 30 + (int) (12 * Math.sin(animationFrame * 0.08));
+                    Sprites.drawLight(g2d, sx, sy, 105, new Color(255, 40, 150), pulse);
+                } else if (map[x][y] == Tiles.EXIT && bossDefeated) {
+                    Sprites.drawLight(g2d, sx, sy, 140, new Color(60, 255, 140), 45);
+                } else if (map[x][y] == Tiles.PROP && theme == 0 && Sprites.hash(x, y) % 3 == 0) {
+                    int flick = 70 + (int) (30 * Math.sin(animationFrame * 0.25 + x));
+                    Sprites.drawLight(g2d, sx, sy, 120, new Color(255, 150, 50), flick);
+                } else if (map[x][y] == Tiles.WALL && theme == 4 && Sprites.hash(x, y) % 5 == 0) {
+                    Sprites.drawLight(g2d, sx, sy, 95, new Color(230, 180, 100), 45);
+                }
+            }
+        }
+
+        // El resplandor de los ojos de Nox
+        Sprites.drawLight(g2d, (int) playerX - camX + 15, (int) playerY - camY + 6,
+                          70, new Color(140, 255, 90), 34);
+    }
+
     // ------------------------------------------------------------------
     // HUD
     // ------------------------------------------------------------------
@@ -849,7 +1061,6 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         g2d.setColor(new Color(70, 70, 80));
         g2d.drawRect(10, 10, getWidth() - 20, 44);
 
-        // Salud
         g2d.setColor(new Color(60, 15, 15));
         g2d.fillRect(20, 20, 200, 22);
         g2d.setColor(playerHealth > 35 ? new Color(0, 220, 100) : new Color(255, 60, 60));
@@ -859,32 +1070,35 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         g2d.setFont(new Font("Consolas", Font.BOLD, 13));
         g2d.drawString(Math.max(0, playerHealth) + " HP", 88, 37);
 
-        // Datos del barrio
         g2d.setColor(new Color(255, 190, 70));
-        g2d.setFont(new Font("Consolas", Font.BOLD, 15));
-        g2d.drawString(info.name + "   $" + playerMoney + "   " + weaponLabel(), 235, 37);
+        g2d.setFont(new Font("Consolas", Font.BOLD, 14));
+        g2d.drawString(info.name + "   $" + playerMoney + "   " + weaponLabel(), 232, 30);
 
-        // Familia rescatada
+        g2d.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2d.setColor(new Color(170, 200, 230));
+        String gear = ARMOR_NAMES[Math.min(3, armorLevel)] + "   [Q] ATÚN x" + tunaCans;
+        if (hasWhistle) gear += "   [F] SILBATO " + (whistleCooldown > 0 ? (whistleCooldown / 60 + 1) + "s" : "LISTO");
+        g2d.drawString(gear, 232, 47);
+
         g2d.setFont(new Font("Consolas", Font.BOLD, 12));
-        int fx = getWidth() - 250;
+        int fx0 = getWidth() - 250;
         for (int i = 0; i < familyNames.length; i++) {
             g2d.setColor(familyRescued[i] ? new Color(0, 230, 110) : new Color(90, 20, 20));
-            g2d.fillRoundRect(fx + i * 78, 18, 68, 26, 8, 8);
+            g2d.fillRoundRect(fx0 + i * 78, 18, 68, 26, 8, 8);
             g2d.setColor(familyRescued[i] ? Color.BLACK : new Color(160, 120, 120));
             int w = g2d.getFontMetrics().stringWidth(familyNames[i]);
-            g2d.drawString(familyNames[i], fx + i * 78 + 34 - w / 2, 36);
+            g2d.drawString(familyNames[i], fx0 + i * 78 + 34 - w / 2, 36);
         }
 
-        // Cordura
+        // Cordura: se marca en rojo cuando ya condiciona el final
         g2d.setColor(new Color(0, 0, 0, 215));
         g2d.fillRect(10, 60, 230, 20);
-        g2d.setColor(new Color(140, 30, 210));
+        g2d.setColor(sanity < 45 ? new Color(210, 30, 60) : new Color(140, 30, 210));
         g2d.fillRect(14, 64, (int) (202 * (sanity / 100.0)), 12);
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("Consolas", Font.PLAIN, 11));
-        g2d.drawString("CORDURA", 18, 74);
+        g2d.drawString("CORDURA " + (int) sanity + "%", 18, 74);
 
-        // Barra del jefe
         if (currentBoss != null && bossEncountered && !bossDefeated) {
             int bw = 520, bx = getWidth() / 2 - bw / 2, by = 92;
             g2d.setColor(new Color(0, 0, 0, 220));
@@ -912,7 +1126,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
         g2d.setColor(new Color(120, 120, 130));
         g2d.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2d.drawString("[ESPACIO] Atacar  [1-3] Arma  [M] Mapa  [P/ESC] Pausa", 14, getHeight() - 14);
+        g2d.drawString("[ESPACIO] Atacar  [1-4] Arma  [Q] Curar  [M] Mapa  [P/ESC] Pausa", 14, getHeight() - 14);
         String cloud = SaveManager.getCloudStatus();
         int cw = g2d.getFontMetrics().stringWidth(cloud);
         g2d.drawString(cloud, getWidth() - cw - 14, getHeight() - 14);
@@ -920,10 +1134,11 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
     private String weaponLabel() {
         switch (activeWeapon) {
-            case 1: return "[1] GARRAS DE ACERO";
-            case 2: return "[2] BALLESTA";
-            case 3: return "[3] PLASMA";
-            default: return "[1] GARRAS";
+            case W_ACERO:    return "[1] GARRAS DE ACERO";
+            case W_BALLESTA: return "[2] BALLESTA";
+            case W_PLASMA:   return "[3] PLASMA";
+            case W_MOLOTOV:  return "[4] MOLOTOV";
+            default:         return "[1] GARRAS";
         }
     }
 
@@ -947,15 +1162,20 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             for (int y = 0; y < MAP_HEIGHT; y++) {
                 int px = mx + (int) (x * TILE_SIZE * scale);
                 int py = my + (int) (y * TILE_SIZE * scale);
-                if (map[x][y] == T_EDIFICIO) {
-                    g2d.setColor(new Color(70, 70, 82));
-                    g2d.fillRect(px, py, 4, 4);
-                } else if (map[x][y] == T_SALIDA) {
-                    g2d.setColor(bossDefeated ? new Color(0, 255, 120) : new Color(255, 50, 50));
-                    g2d.fillRect(px, py, 5, 5);
-                } else if (map[x][y] == T_TIENDA) {
-                    g2d.setColor(new Color(255, 0, 150));
-                    g2d.fillRect(px, py, 4, 4);
+                switch (map[x][y]) {
+                    case Tiles.WALL:
+                        g2d.setColor(new Color(70, 70, 82)); g2d.fillRect(px, py, 4, 4); break;
+                    case Tiles.WATER:
+                        g2d.setColor(new Color(30, 70, 100)); g2d.fillRect(px, py, 4, 4); break;
+                    case Tiles.VOID:
+                        g2d.setColor(new Color(10, 10, 14)); g2d.fillRect(px, py, 4, 4); break;
+                    case Tiles.EXIT:
+                        g2d.setColor(bossDefeated ? new Color(0, 255, 120) : new Color(255, 50, 50));
+                        g2d.fillRect(px, py, 5, 5); break;
+                    case Tiles.SHOP:
+                        g2d.setColor(new Color(255, 0, 150)); g2d.fillRect(px, py, 4, 4); break;
+                    default:
+                        break;
                 }
             }
         }
@@ -1006,21 +1226,24 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
         g2d.setFont(new Font("Consolas", Font.PLAIN, 18));
         g2d.setColor(new Color(220, 220, 220));
-        int ly = 140;
-        for (String line : lines) { g2d.drawString(line, 60, ly); ly += 27; }
+        int ly = 138;
+        for (String line : lines) { g2d.drawString(line, 60, ly); ly += 26; }
 
         g2d.setColor(new Color(255, 180, 50));
         g2d.setFont(new Font("Consolas", Font.BOLD, 15));
-        ly += 14;
+        ly += 10;
         for (int i = 0; i < levels.length; i++) {
             g2d.drawString((i + 1) + ". " + levels[i].name + " — " + levels[i].bossName, 60, ly);
-            ly += 22;
+            ly += 21;
         }
 
-        // Nox observando desde la esquina
-        Sprites.drawNox(g2d, getWidth() - 150, getHeight() - 190, 2, animationFrame, false, false, false);
+        g2d.setColor(new Color(190, 90, 220));
+        g2d.setFont(new Font("Consolas", Font.ITALIC, 15));
+        g2d.drawString("Cuida tu CORDURA: de ella depende cómo termina esta historia.", 60, ly + 16);
 
-        centeredText(g2d, "Presiona ESPACIO o ENTER para comenzar...", getHeight() - 32,
+        Sprites.drawNox(g2d, getWidth() - 150, getHeight() - 190, 2, animationFrame, false, false, false, 0);
+
+        centeredText(g2d, "Presiona ESPACIO o ENTER para comenzar...", getHeight() - 28,
                      new Font("Consolas", Font.ITALIC, 16), new Color(160, 160, 160));
     }
 
@@ -1030,9 +1253,8 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         centeredText(g2d, info.name, getHeight() / 2 - 20, new Font("Consolas", Font.BOLD, 36), new Color(255, 60, 60));
         String sub = (currentLevel == MAX_LEVEL ? "JEFE FINAL: " : "JEFE DEL BARRIO: ") + info.bossName;
         centeredText(g2d, sub, getHeight() / 2 + 25, new Font("Consolas", Font.PLAIN, 20), Color.WHITE);
-        String rescue = info.rescueTarget != null ? "Aquí retienen a " + info.rescueTarget : "";
-        if (!rescue.isEmpty()) {
-            centeredText(g2d, rescue, getHeight() / 2 + 60,
+        if (info.rescueTarget != null) {
+            centeredText(g2d, "Aquí retienen a " + info.rescueTarget, getHeight() / 2 + 60,
                          new Font("Consolas", Font.ITALIC, 17), new Color(120, 255, 160));
         }
     }
@@ -1082,25 +1304,83 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
                      new Font("Consolas", Font.PLAIN, 17), new Color(160, 160, 160));
     }
 
+    /** Dos finales: depende de con cuánta cordura llegue Nox a la mansión. */
     private void drawVictory(Graphics2D g2d) {
-        g2d.setColor(new Color(0, 0, 0, 250));
-        g2d.fillRect(0, 0, getWidth(), getHeight());
-        centeredText(g2d, "¡HAS DERROTADO A DON COLMILLO!", getHeight() / 2 - 110,
-                     new Font("Consolas", Font.BOLD, 40), new Color(0, 255, 120));
-        centeredText(g2d, "Mitsy, Will y Nina están a salvo.", getHeight() / 2 - 60,
-                     new Font("Consolas", Font.PLAIN, 21), Color.WHITE);
-        centeredText(g2d, "Nox regresa a casa con su familia, en paz.", getHeight() / 2 - 28,
-                     new Font("Consolas", Font.PLAIN, 21), Color.WHITE);
-
         long secs = accumulatedMs / 1000;
-        centeredText(g2d, "PUNTUACIÓN: " + score, getHeight() / 2 + 20,
-                     new Font("Consolas", Font.BOLD, 26), new Color(255, 190, 70));
-        centeredText(g2d, kills + " perros derrotados   |   tiempo " + (secs / 60) + "m " + (secs % 60) + "s"
-                          + "   |   dificultad " + difficultyName(), getHeight() / 2 + 55,
-                     new Font("Consolas", Font.PLAIN, 17), new Color(190, 190, 190));
 
-        Sprites.drawNox(g2d, getWidth() / 2 - 15, getHeight() / 2 + 90, 1, animationFrame, false, false, false);
-        centeredText(g2d, "Presiona ESC para volver al menú", getHeight() - 40,
+        if (darkEnding) {
+            g2d.setColor(new Color(10, 0, 8, 252));
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+
+            centeredText(g2d, "FINAL OSCURO", 90, new Font("Consolas", Font.BOLD, 26), new Color(150, 40, 190));
+            centeredText(g2d, "EL GATO QUE NO VOLVIÓ", 150,
+                         new Font("Consolas", Font.BOLD, 40), new Color(220, 40, 60));
+
+            String[] text = {
+                "Don Colmillo cayó. La pandilla se deshizo esa misma noche.",
+                "",
+                "Pero cuando Mitsy lo llamó por su nombre,",
+                "Nox no se dio la vuelta.",
+                "",
+                "Demasiadas noches en la oscuridad. Demasiados aullidos.",
+                "El gato que entró a la mansión no fue el que salió.",
+                "",
+                "Su familia volvió a casa. Él se quedó en la ciudad,",
+                "y la ciudad aprendió a temerle igual que a Colmillo.",
+            };
+            g2d.setFont(new Font("Consolas", Font.PLAIN, 18));
+            int ly = 220;
+            for (String line : text) {
+                g2d.setColor(new Color(195, 185, 195));
+                int w = g2d.getFontMetrics().stringWidth(line);
+                g2d.drawString(line, getWidth() / 2 - w / 2, ly);
+                ly += 26;
+            }
+
+            centeredText(g2d, "Terminaste con " + (int) sanity + "% de cordura.", ly + 22,
+                         new Font("Consolas", Font.BOLD, 17), new Color(150, 40, 190));
+            centeredText(g2d, "Llega con más de 45% para ver el otro final.", ly + 48,
+                         new Font("Consolas", Font.ITALIC, 15), new Color(140, 130, 140));
+            centeredText(g2d, "PUNTUACIÓN: " + score + "   |   " + kills + " perros   |   "
+                              + (secs / 60) + "m " + (secs % 60) + "s   |   " + difficultyName(),
+                         ly + 78, new Font("Consolas", Font.PLAIN, 16), new Color(255, 190, 70));
+        } else {
+            g2d.setColor(new Color(0, 0, 0, 250));
+            g2d.fillRect(0, 0, getWidth(), getHeight());
+
+            centeredText(g2d, "FINAL BUENO", 90, new Font("Consolas", Font.BOLD, 26), new Color(0, 200, 110));
+            centeredText(g2d, "¡HAS DERROTADO A DON COLMILLO!", 150,
+                         new Font("Consolas", Font.BOLD, 38), new Color(0, 255, 120));
+
+            String[] text = {
+                "La pandilla se deshizo esa misma noche.",
+                "",
+                "Mitsy, Will y Nina están a salvo.",
+                "",
+                "Nox aguantó la oscuridad sin dejar que lo cambiara,",
+                "y volvió a ser el gato del callejón:",
+                "el que ronronea cuando sus gatitos se le suben encima.",
+                "",
+                "La ciudad amaneció, por primera vez en mucho tiempo,",
+                "sin nadie a quien pagarle protección.",
+            };
+            g2d.setFont(new Font("Consolas", Font.PLAIN, 18));
+            int ly = 220;
+            for (String line : text) {
+                g2d.setColor(new Color(220, 220, 220));
+                int w = g2d.getFontMetrics().stringWidth(line);
+                g2d.drawString(line, getWidth() / 2 - w / 2, ly);
+                ly += 26;
+            }
+
+            Sprites.drawNox(g2d, getWidth() / 2 - 15, ly + 12, 1, animationFrame, false, false, false, armorLevel);
+
+            centeredText(g2d, "PUNTUACIÓN: " + score + "   |   " + kills + " perros   |   "
+                              + (secs / 60) + "m " + (secs % 60) + "s   |   " + difficultyName(),
+                         ly + 84, new Font("Consolas", Font.PLAIN, 16), new Color(255, 190, 70));
+        }
+
+        centeredText(g2d, "Presiona ESC para volver al menú", getHeight() - 26,
                      new Font("Consolas", Font.ITALIC, 16), new Color(150, 150, 150));
     }
 
@@ -1121,11 +1401,26 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
                      new Font("Consolas", Font.ITALIC, 15), new Color(140, 140, 140));
     }
 
+    private String[] shopItems() {
+        return new String[]{
+            "Garras de Acero      cuerpo a cuerpo devastador    $300 " + (hasSteelClaws ? "[COMPRADO]" : ""),
+            "Ballesta de Chatarra ataque a distancia            $500 " + (hasCrossbow ? "[COMPRADO]" : ""),
+            "Lanzador de Plasma   ráfaga de 5 disparos          $900 " + (hasPlasmaLauncher ? "[COMPRADO]" : ""),
+            "Cóctel Molotov       explosión en área             $700 " + (hasMolotov ? "[COMPRADO]" : ""),
+            "Silbato Ultrasónico  aturde a los perros           $450 " + (hasWhistle ? "[COMPRADO]" : ""),
+            "Collar Reforzado     -15% de daño recibido         $250 " + (armorLevel >= 1 ? "[COMPRADO]" : ""),
+            "Chaleco de Cuero     -30% de daño recibido         $600 " + (armorLevel >= 2 ? "[COMPRADO]" : ""),
+            "Placas de Acero      -45% de daño recibido        $1100 " + (armorLevel >= 3 ? "[COMPRADO]" : ""),
+            "Lata de Atún         +50 salud, la llevas contigo   $100 (tienes " + tunaCans + "/" + MAX_TUNA + ")",
+            "Amuleto de Cordura   +40 de cordura                $150",
+        };
+    }
+
     private void drawShop(Graphics2D g2d) {
-        g2d.setColor(new Color(0, 0, 0, 235));
+        g2d.setColor(new Color(0, 0, 0, 238));
         g2d.fillRect(0, 0, getWidth(), getHeight());
 
-        int w = 780, h = 470;
+        int w = 880, h = 610;
         int x = getWidth() / 2 - w / 2, y = getHeight() / 2 - h / 2;
         g2d.setColor(new Color(22, 8, 24));
         g2d.fillRect(x, y, w, h);
@@ -1135,42 +1430,36 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         g2d.setStroke(new BasicStroke(1f));
 
         g2d.setFont(new Font("Consolas", Font.BOLD, 26));
-        g2d.drawString("MERCADO NEGRO", x + 30, y + 45);
+        g2d.drawString("MERCADO NEGRO", x + 26, y + 42);
         g2d.setColor(new Color(255, 190, 70));
         g2d.setFont(new Font("Consolas", Font.BOLD, 22));
-        g2d.drawString("FONDOS: $" + playerMoney, x + w - 250, y + 45);
+        String funds = "FONDOS: $" + playerMoney;
+        g2d.drawString(funds, x + w - 30 - g2d.getFontMetrics().stringWidth(funds), y + 42);
 
-        String[] items = {
-            "Garras de Acero  (cuerpo a cuerpo devastador)   $300 " + (hasSteelClaws ? "[COMPRADO]" : ""),
-            "Ballesta de Chatarra  (ataque a distancia)      $500 " + (hasCrossbow ? "[COMPRADO]" : ""),
-            "Lanzador de Plasma  (ráfaga de 5 disparos)      $900 " + (hasPlasmaLauncher ? "[COMPRADO]" : ""),
-            "Lata de Atún  (+50 de salud)                    $100",
-            "Amuleto de Cordura  (+40 de cordura)            $150",
-        };
-
-        g2d.setFont(new Font("Consolas", Font.PLAIN, 17));
+        String[] items = shopItems();
+        g2d.setFont(new Font("Consolas", Font.PLAIN, 16));
         for (int i = 0; i < items.length; i++) {
-            int iy = y + 120 + i * 52;
+            int iy = y + 108 + i * 44;
             if (i == selectedShopItem) {
                 g2d.setColor(new Color(255, 0, 150, 60));
-                g2d.fillRect(x + 22, iy - 22, w - 44, 38);
+                g2d.fillRect(x + 20, iy - 20, w - 40, 32);
                 g2d.setColor(Color.YELLOW);
-                g2d.drawString("> " + items[i], x + 34, iy);
+                g2d.drawString("> " + items[i], x + 32, iy);
             } else {
                 g2d.setColor(Color.WHITE);
-                g2d.drawString("  " + items[i], x + 34, iy);
+                g2d.drawString("  " + items[i], x + 32, iy);
             }
         }
 
         if (shopMessageTimer > 0) {
             g2d.setColor(shopMessage.startsWith("¡COMPRA") ? new Color(0, 255, 120) : new Color(255, 60, 60));
             g2d.setFont(new Font("Consolas", Font.BOLD, 20));
-            g2d.drawString(shopMessage, x + 30, y + 88);
+            g2d.drawString(shopMessage, x + 26, y + 78);
         }
 
         g2d.setColor(Color.GRAY);
         g2d.setFont(new Font("Consolas", Font.PLAIN, 15));
-        g2d.drawString("[W/S] Navegar    [ENTER] Comprar    [ESC/E] Cerrar", x + 30, y + h - 25);
+        g2d.drawString("[W/S] Navegar    [ENTER] Comprar    [ESC/E] Cerrar", x + 26, y + h - 22);
     }
 
     private void drawJumpscare(Graphics2D g2d) {
@@ -1209,7 +1498,7 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     class Enemy {
         double x, y, speed;
         int hp, maxHp, size, breed, contactDamage, reward, type;
-        boolean hasGun, isBoss;
+        boolean hasGun, isBoss, shield, exploded;
         String name;
         Color bodyColor;
         int facing = 1;
@@ -1217,8 +1506,11 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         int specialCooldown = 200;
         int chargeCooldown = 260;
         int chargeTimer = 0;
+        int detourTimer = 0;
+        int detourDir = 1;
+        int stunTimer = 0;
+        int hurtFlash = 0;
 
-        /** Pandillero normal. */
         Enemy(double x, double y, int type, int level) {
             this.x = x;
             this.y = y;
@@ -1235,19 +1527,38 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
                     break;
                 case E_CORREDOR:
                     maxHp = (int) Math.round(base * 0.55 * diffHpMult);
-                    speed = 4.5; size = 34; breed = 4; hasGun = false;
+                    speed = 4.5; size = 34; breed = 4;
                     contactDamage = 9; reward = 130;
                     bodyColor = new Color(150, 110, 60);
                     break;
                 case E_BRUTO:
                     maxHp = (int) Math.round(base * 1.9 * diffHpMult);
-                    speed = 1.7; size = 54; breed = 0; hasGun = false;
+                    speed = 1.7; size = 54; breed = 0;
                     contactDamage = 22; reward = 260;
                     bodyColor = new Color(70, 65, 70);
                     break;
+                case E_ESCUDO:
+                    maxHp = (int) Math.round(base * 1.3 * diffHpMult);
+                    speed = 2.0; size = 46; breed = 0; shield = true;
+                    contactDamage = 16; reward = 300;
+                    bodyColor = new Color(88, 70, 58);
+                    break;
+                case E_ALFA:
+                    maxHp = (int) Math.round(base * 1.5 * diffHpMult);
+                    speed = 2.9; size = 50; breed = 2; hasGun = true;
+                    contactDamage = 18; reward = 350;
+                    specialCooldown = 260;
+                    bodyColor = new Color(60, 52, 46);
+                    break;
+                case E_KAMIKAZE:
+                    maxHp = (int) Math.round(base * 0.35 * diffHpMult);
+                    speed = 5.2; size = 30; breed = 4;
+                    contactDamage = 0; reward = 120;
+                    bodyColor = new Color(180, 120, 40);
+                    break;
                 default:
                     maxHp = (int) Math.round(base * diffHpMult);
-                    speed = 2.7; size = 40; breed = 1; hasGun = false;
+                    speed = 2.7; size = 40; breed = 1;
                     contactDamage = 14; reward = 150;
                     bodyColor = new Color(120, 78, 40);
             }
@@ -1276,16 +1587,14 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
     class Projectile {
         double x, y, dx, dy;
         int damage;
-        boolean isEnemyBullet;
+        boolean isEnemyBullet, molotov;
         int life = 150;
 
-        /** Dirigido hacia un punto. */
         Projectile(double x, double y, double targetX, double targetY,
                    double speed, int damage, boolean isEnemy) {
             this(x, y, Math.atan2(targetY - y, targetX - x), speed, damage, isEnemy);
         }
 
-        /** Con ángulo explícito: lo usan la ráfaga del jefe y la dispersión del plasma. */
         Projectile(double x, double y, double angle, double speed, int damage, boolean isEnemy) {
             this.x = x;
             this.y = y;
@@ -1324,12 +1633,8 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         }
 
         if (isDead) {
-            if (key == KeyEvent.VK_ENTER) {
-                gameLoop.stop();
-                continueSavedGame();
-            } else if (key == KeyEvent.VK_ESCAPE) {
-                exitToMenu();
-            }
+            if (key == KeyEvent.VK_ENTER) { gameLoop.stop(); continueSavedGame(); }
+            else if (key == KeyEvent.VK_ESCAPE) exitToMenu();
             return;
         }
 
@@ -1358,16 +1663,57 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         if (key == KeyEvent.VK_A || key == KeyEvent.VK_LEFT) left = true;
         if (key == KeyEvent.VK_D || key == KeyEvent.VK_RIGHT) right = true;
 
-        if (key == KeyEvent.VK_1) activeWeapon = hasSteelClaws ? 1 : 0;
-        if (key == KeyEvent.VK_2 && hasCrossbow) activeWeapon = 2;
-        if (key == KeyEvent.VK_3 && hasPlasmaLauncher) activeWeapon = 3;
+        if (key == KeyEvent.VK_1) activeWeapon = hasSteelClaws ? W_ACERO : W_GARRAS;
+        if (key == KeyEvent.VK_2 && hasCrossbow) activeWeapon = W_BALLESTA;
+        if (key == KeyEvent.VK_3 && hasPlasmaLauncher) activeWeapon = W_PLASMA;
+        if (key == KeyEvent.VK_4 && hasMolotov) activeWeapon = W_MOLOTOV;
 
         if (key == KeyEvent.VK_SPACE) attack();
+        if (key == KeyEvent.VK_Q) useTuna();
+        if (key == KeyEvent.VK_F) blowWhistle();
+
         if (key == KeyEvent.VK_E && nearStore) {
             isShopOpen = true;
             shopMessage = "";
             AudioEngine.play("blip");
         }
+    }
+
+    private void useTuna() {
+        if (tunaCans <= 0) {
+            fx.text(playerX, playerY - 20, "SIN ATÚN", new Color(200, 200, 200), 14);
+            AudioEngine.play("error", 0.5);
+            return;
+        }
+        if (playerHealth >= 100) {
+            fx.text(playerX, playerY - 20, "SALUD LLENA", new Color(200, 200, 200), 14);
+            return;
+        }
+        tunaCans--;
+        int healed = Math.min(50, 100 - playerHealth);
+        playerHealth += healed;
+        fx.text(playerX, playerY - 20, "+" + healed, new Color(80, 255, 130), 18);
+        AudioEngine.play("heal");
+    }
+
+    private void blowWhistle() {
+        if (!hasWhistle) return;
+        if (whistleCooldown > 0) {
+            AudioEngine.play("error", 0.4);
+            return;
+        }
+        whistleCooldown = 600;
+        AudioEngine.play("whistle");
+        fx.explosion(playerX + 15, playerY + 15, 0.35);
+
+        int affected = 0;
+        for (Enemy en : enemies) {
+            if (Point2D.distance(playerX, playerY, en.x, en.y) < 300) {
+                en.stunTimer = en.isBoss ? 70 : 160;
+                affected++;
+            }
+        }
+        fx.text(playerX - 20, playerY - 30, affected + " ATURDIDOS", new Color(255, 240, 120), 16);
     }
 
     private void attack() {
@@ -1379,40 +1725,59 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         double baseAngle = facing == 0 ? -Math.PI / 2 : facing == 1 ? Math.PI / 2
                          : facing == 2 ? Math.PI : 0;
 
-        if (activeWeapon == 2) {
-            weaponCooldown = 16;
-            bullets.add(new Projectile(cx, cy, baseAngle, 15.0, 55, false));
-            AudioEngine.play("shoot");
-        } else if (activeWeapon == 3) {
-            weaponCooldown = 34;
-            for (int i = -2; i <= 2; i++) {
-                bullets.add(new Projectile(cx, cy, baseAngle + i * 0.16, 13.0, 45, false));
-            }
-            AudioEngine.play("plasma");
-        } else {
-            boolean steel = activeWeapon == 1;
-            weaponCooldown = steel ? 22 : 17;
-            int damage = steel ? 85 : 30;
-            double range = steel ? 115 : 62;
-            boolean connected = false;
-            for (Enemy en : enemies) {
-                if (Point2D.distance(cx, cy, en.x + en.size / 2.0, en.y + en.size / 2.0) <= range) {
-                    en.hp -= damage;
-                    connected = true;
+        switch (activeWeapon) {
+            case W_BALLESTA:
+                weaponCooldown = 16;
+                bullets.add(new Projectile(cx, cy, baseAngle, 15.0, 55, false));
+                fx.muzzle(cx, cy, baseAngle, new Color(140, 230, 255));
+                AudioEngine.play("shoot");
+                break;
+
+            case W_PLASMA:
+                weaponCooldown = 34;
+                for (int i = -2; i <= 2; i++) {
+                    bullets.add(new Projectile(cx, cy, baseAngle + i * 0.16, 13.0, 45, false));
                 }
+                fx.muzzle(cx, cy, baseAngle, new Color(180, 120, 255));
+                AudioEngine.play("plasma");
+                break;
+
+            case W_MOLOTOV: {
+                weaponCooldown = 58;
+                Projectile p = new Projectile(cx, cy, baseAngle, 9.0, 0, false);
+                p.molotov = true;
+                p.life = 45;              // vuela un tramo y revienta
+                bullets.add(p);
+                AudioEngine.play("throw");
+                break;
             }
-            AudioEngine.play(steel ? "steel" : "claw");
-            if (connected) AudioEngine.play("hit", 0.6);
+
+            default: {
+                boolean steel = activeWeapon == W_ACERO;
+                weaponCooldown = steel ? 22 : 17;
+                int damage = steel ? 85 : 30;
+                double range = steel ? 115 : 62;
+                boolean connected = false;
+                for (Enemy en : enemies) {
+                    if (Point2D.distance(cx, cy, en.x + en.size / 2.0, en.y + en.size / 2.0) <= range) {
+                        hurtEnemy(en, damage, cx, cy);
+                        connected = true;
+                    }
+                }
+                AudioEngine.play(steel ? "steel" : "claw");
+                if (!connected) fx.hit(cx + Math.cos(baseAngle) * 40, cy + Math.sin(baseAngle) * 40,
+                                       new Color(150, 150, 160));
+            }
         }
     }
 
     private void handleShopKey(int key) {
         if (key == KeyEvent.VK_W || key == KeyEvent.VK_UP) {
-            selectedShopItem = Math.max(0, selectedShopItem - 1);
+            selectedShopItem = (selectedShopItem - 1 + SHOP_ITEMS) % SHOP_ITEMS;
             AudioEngine.play("blip", 0.5);
         }
         if (key == KeyEvent.VK_S || key == KeyEvent.VK_DOWN) {
-            selectedShopItem = Math.min(SHOP_ITEMS - 1, selectedShopItem + 1);
+            selectedShopItem = (selectedShopItem + 1) % SHOP_ITEMS;
             AudioEngine.play("blip", 0.5);
         }
         if (key == KeyEvent.VK_SPACE || key == KeyEvent.VK_ENTER) {
@@ -1427,12 +1792,17 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
     private void buySelectedItem() {
         switch (selectedShopItem) {
-            case 0: purchase(hasSteelClaws, 300, () -> { hasSteelClaws = true; activeWeapon = 1; }); break;
-            case 1: purchase(hasCrossbow, 500, () -> { hasCrossbow = true; activeWeapon = 2; }); break;
-            case 2: purchase(hasPlasmaLauncher, 900, () -> { hasPlasmaLauncher = true; activeWeapon = 3; }); break;
-            case 3:
-                if (playerHealth >= 100) { shopMessage = "¡SALUD AL MÁXIMO!"; AudioEngine.play("error"); }
-                else purchase(false, 100, () -> playerHealth = Math.min(100, playerHealth + 50));
+            case 0: purchase(hasSteelClaws, 300, () -> { hasSteelClaws = true; activeWeapon = W_ACERO; }); break;
+            case 1: purchase(hasCrossbow, 500, () -> { hasCrossbow = true; activeWeapon = W_BALLESTA; }); break;
+            case 2: purchase(hasPlasmaLauncher, 900, () -> { hasPlasmaLauncher = true; activeWeapon = W_PLASMA; }); break;
+            case 3: purchase(hasMolotov, 700, () -> { hasMolotov = true; activeWeapon = W_MOLOTOV; }); break;
+            case 4: purchase(hasWhistle, 450, () -> hasWhistle = true); break;
+            case 5: purchase(armorLevel >= 1, 250, () -> armorLevel = Math.max(armorLevel, 1)); break;
+            case 6: purchase(armorLevel >= 2, 600, () -> armorLevel = Math.max(armorLevel, 2)); break;
+            case 7: purchase(armorLevel >= 3, 1100, () -> armorLevel = 3); break;
+            case 8:
+                if (tunaCans >= MAX_TUNA) { shopMessage = "NO PUEDES CARGAR MÁS"; AudioEngine.play("error"); }
+                else purchase(false, 100, () -> tunaCans++);
                 break;
             default:
                 if (sanity >= 100) { shopMessage = "¡CORDURA AL MÁXIMO!"; AudioEngine.play("error"); }

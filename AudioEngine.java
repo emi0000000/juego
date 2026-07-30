@@ -401,7 +401,54 @@ public final class AudioEngine {
         SFX.put("buy", renderNotes(new double[]{523.25, 659.25, 1046.50}, 0.09, 0.22, 0));
         SFX.put("error", render(0.35, t -> square(78, t) * Math.exp(-t * 6) * 0.24));
 
+        // Explosión del molotov y del kamikaze
+        SFX.put("boom", render(0.85, t -> {
+            double e = Math.exp(-t * 4.2);
+            double low = Math.sin(2 * Math.PI * (95 - 70 * t) * t);
+            double blast = noise() * Math.exp(-t * 6.5);
+            double rumble = saw(38 + 12 * Math.sin(2 * Math.PI * 3 * t), t) * Math.exp(-t * 3);
+            return (low * 0.45 + blast * 0.7 + rumble * 0.35) * e * 0.62;
+        }));
+
+        // Botella girando por el aire
+        SFX.put("throw", render(0.30, t -> {
+            double f = 300 + 200 * Math.sin(2 * Math.PI * 9 * t);
+            return Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 7) * 0.20;
+        }));
+
+        // El escudo detiene el golpe
+        SFX.put("clang", render(0.55, t -> {
+            double e = Math.exp(-t * 7);
+            double m = Math.sin(2 * Math.PI * 2100 * t)
+                     + Math.sin(2 * Math.PI * 3170 * t) * 0.75
+                     + Math.sin(2 * Math.PI * 4630 * t) * 0.5;
+            return (m * 0.24 + noise() * 0.20 * Math.exp(-t * 30)) * e * 0.46;
+        }));
+
+        // Aullido del alfa llamando refuerzos
+        SFX.put("howl", render(1.60, t -> {
+            double glide = t < 0.4 ? t / 0.4 : 1;
+            double f = 150 + 210 * glide - 60 * Math.max(0, t - 1.0);
+            double vib = 1 + 0.035 * Math.sin(2 * Math.PI * 5.5 * t);
+            double e = Math.min(1, t / 0.15) * Math.min(1, (1.60 - t) / 0.45);
+            return (saw(f * vib, t) * 0.42 + Math.sin(2 * Math.PI * f * vib * t) * 0.42) * e * 0.44;
+        }));
+
+        // Silbato ultrasónico
+        SFX.put("whistle", render(0.80, t -> {
+            double f = 3100 + 700 * Math.sin(2 * Math.PI * 7 * t);
+            double e = Math.min(1, t / 0.04) * Math.min(1, (0.80 - t) / 0.25);
+            return (Math.sin(2 * Math.PI * f * t) * 0.55 + Math.sin(2 * Math.PI * f * 1.5 * t) * 0.25) * e * 0.30;
+        }));
+
+        // Lata de atún: Nox se cura
+        SFX.put("heal", renderNotes(new double[]{392.00, 523.25, 659.25}, 0.11, 0.20, 0));
+
         SFX.put("rescue", renderNotes(new double[]{523.25, 659.25, 783.99, 1046.50, 1318.51}, 0.16, 0.20, 0));
+
+        // Final oscuro: los mismos grados que la victoria, pero en menor y descendiendo
+        SFX.put("darkending", renderNotes(
+            new double[]{329.63, 261.63, 220.00, 174.61, 130.81, 110.00}, 0.42, 0.20, 2));
         SFX.put("levelclear", renderNotes(new double[]{392.00, 523.25, 659.25, 783.99}, 0.20, 0.22, 0));
         SFX.put("death", renderNotes(new double[]{261.63, 233.08, 207.65, 155.56, 130.81}, 0.30, 0.24, 2));
         SFX.put("victory", renderNotes(

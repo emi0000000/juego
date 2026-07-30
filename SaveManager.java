@@ -41,6 +41,10 @@ public final class SaveManager {
         public boolean claws = false;
         public boolean crossbow = false;
         public boolean plasma = false;
+        public boolean molotov = false;
+        public boolean whistle = false;
+        public int armor = 0;
+        public int tuna = 0;
         public boolean[] family = new boolean[3];
         public int score = 0;
         public long playTimeMs = 0;
@@ -76,6 +80,10 @@ public final class SaveManager {
         props.setProperty("claws", String.valueOf(p.claws));
         props.setProperty("crossbow", String.valueOf(p.crossbow));
         props.setProperty("plasma", String.valueOf(p.plasma));
+        props.setProperty("molotov", String.valueOf(p.molotov));
+        props.setProperty("whistle", String.valueOf(p.whistle));
+        props.setProperty("armor", String.valueOf(p.armor));
+        props.setProperty("tuna", String.valueOf(p.tuna));
         props.setProperty("family", p.familyAsString());
         props.setProperty("score", String.valueOf(p.score));
         props.setProperty("playTimeMs", String.valueOf(p.playTimeMs));
@@ -110,6 +118,10 @@ public final class SaveManager {
         p.claws = Boolean.parseBoolean(props.getProperty("claws", "false"));
         p.crossbow = Boolean.parseBoolean(props.getProperty("crossbow", "false"));
         p.plasma = Boolean.parseBoolean(props.getProperty("plasma", "false"));
+        p.molotov = Boolean.parseBoolean(props.getProperty("molotov", "false"));
+        p.whistle = Boolean.parseBoolean(props.getProperty("whistle", "false"));
+        p.armor = intOf(props, "armor", 0);
+        p.tuna = intOf(props, "tuna", 0);
         p.familyFromString(props.getProperty("family", "000"));
         p.score = intOf(props, "score", 0);
         try {
@@ -147,6 +159,10 @@ public final class SaveManager {
              + "\"claws\":" + p.claws + ","
              + "\"crossbow\":" + p.crossbow + ","
              + "\"plasma\":" + p.plasma + ","
+             + "\"molotov\":" + p.molotov + ","
+             + "\"whistle\":" + p.whistle + ","
+             + "\"armor\":" + p.armor + ","
+             + "\"tuna\":" + p.tuna + ","
              + "\"family\":\"" + p.familyAsString() + "\","
              + "\"score\":" + p.score + ","
              + "\"play_time_ms\":" + p.playTimeMs
@@ -163,6 +179,10 @@ public final class SaveManager {
         copy.claws = p.claws;
         copy.crossbow = p.crossbow;
         copy.plasma = p.plasma;
+        copy.molotov = p.molotov;
+        copy.whistle = p.whistle;
+        copy.armor = p.armor;
+        copy.tuna = p.tuna;
         copy.family = p.family.clone();
         copy.score = p.score;
         copy.playTimeMs = p.playTimeMs;

@@ -66,7 +66,10 @@ El juego está repartido en varios archivos `.java`. **Todos son necesarios** y 
 |---|---|
 | `ProjectExodusAdvanced.java` | Ventana principal y menú del juego (aquí está el `main`) |
 | `LabyrinthPanel.java` | Motor del juego: la ciudad, los perros, los jefes, la tienda |
-| `Sprites.java` | Dibuja a Nox, los perros y el escenario con Java 2D |
+| `MapGenerator.java` | Construye cada barrio con reglas propias (basurero, metro, puerto...) |
+| `Sprites.java` | Dibuja a Nox, los perros y todos los materiales con Java 2D |
+| `Particles.java` | Chispas, humo, explosiones y números de daño |
+| `Tiles.java` | Tipos de casilla del mapa |
 | `AudioEngine.java` | Música y efectos de sonido (se generan solos, sin archivos de audio) |
 | `SaveManager.java` | Guarda y carga la partida |
 | `LevelInfo.java` | Datos de los 6 barrios y sus jefes |
@@ -133,12 +136,16 @@ Si todo salió bien, se abre la ventana **"ÉXODO: LA VENGANZA DE NOX"** con el 
 |---|---|
 | `W A S D` o flechas | Mover a Nox |
 | `ESPACIO` | Atacar / disparar |
-| `1` `2` `3` | Cambiar de arma (garras, ballesta, plasma) |
+| `1` `2` `3` `4` | Cambiar de arma (garras, ballesta, plasma, molotov) |
+| `Q` | Comerse una lata de atún (+50 de salud) |
+| `F` | Silbato ultrasónico: aturde a los perros cercanos |
 | `E` | Abrir el Mercado Negro (estando junto a la tienda rosa) |
 | `M` | Mostrar u ocultar el mapa del barrio |
 | `P` o `ESC` | Pausa (desde ahí se sale al menú y se activa/desactiva el sonido) |
 
 En el menú de pausa: `N` activa o desactiva la música, `B` los efectos de sonido.
+
+> ⚠️ **Vigila la barra de CORDURA.** Si llegas al jefe final con menos del 45%, verás el **final oscuro** en vez del bueno. El Amuleto de Cordura del Mercado Negro la sube 40 puntos.
 
 ---
 

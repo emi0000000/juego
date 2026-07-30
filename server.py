@@ -33,6 +33,10 @@ class PlayerData(BaseModel):
     claws: bool = False
     crossbow: bool = False
     plasma: bool = False
+    molotov: bool = False
+    whistle: bool = False
+    armor: int = Field(0, ge=0, le=3)
+    tuna: int = Field(0, ge=0, le=5)
     family: str = "000"        # un carácter por familiar: WILL, NINA, MITSY
     score: int = 0
     play_time_ms: int = 0
@@ -64,6 +68,10 @@ def save_data(data: dict) -> None:
 
 DIFFICULTY_NAMES = {0: "FÁCIL", 1: "NORMAL", 2: "PESADILLA"}
 FAMILY_NAMES = ["WILL", "NINA", "MITSY"]
+ARMOR_NAMES = ["Sin armadura", "Collar Reforzado", "Chaleco de Cuero", "Placas de Acero"]
+
+# Umbral de cordura que decide cuál de los dos finales verá el jugador
+SANITY_GOOD_ENDING = 45
 
 
 # ----------------------------------------------------------------------
@@ -108,8 +116,11 @@ async def progress_report(player_id: str):
     rescued = [FAMILY_NAMES[i] for i, c in enumerate(family[:3]) if c == "1"]
     weapons = [n for n, k in (("Garras de Acero", "claws"),
                               ("Ballesta", "crossbow"),
-                              ("Lanzador de Plasma", "plasma")) if player.get(k)]
+                              ("Lanzador de Plasma", "plasma"),
+                              ("Cóctel Molotov", "molotov"),
+                              ("Silbato Ultrasónico", "whistle")) if player.get(k)]
     seconds = player.get("play_time_ms", 0) // 1000
+    sanity = player.get("sanity", 100)
 
     return {
         "barrio": player.get("level", 1),
@@ -117,10 +128,13 @@ async def progress_report(player_id: str):
         "dificultad": DIFFICULTY_NAMES.get(player.get("difficulty", 1), "NORMAL"),
         "salud": player.get("health", 100),
         "dinero": player.get("money", 0),
-        "cordura": player.get("sanity", 100),
+        "cordura": sanity,
+        "final_en_camino": "BUENO" if sanity >= SANITY_GOOD_ENDING else "OSCURO",
         "familia_rescatada": rescued,
         "familia_pendiente": [n for n in FAMILY_NAMES if n not in rescued],
         "armas": weapons or ["Garras (inicial)"],
+        "armadura": ARMOR_NAMES[min(3, max(0, player.get("armor", 0)))],
+        "latas_de_atun": player.get("tuna", 0),
         "puntuacion": player.get("score", 0),
         "tiempo_jugado": f"{seconds // 60}m {seconds % 60}s",
     }

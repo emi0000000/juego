@@ -251,7 +251,7 @@ class MainMenuPanel extends JPanel implements ActionListener {
         for (Point p : rain) g2d.drawLine(p.x, p.y, p.x - 2, p.y + 10);
 
         // Nox acechando en la esquina inferior
-        Sprites.drawNox(g2d, 70, getHeight() - 130, 3, frame, false, false, false);
+        Sprites.drawNox(g2d, 70, getHeight() - 130, 3, frame, false, false, false, 0);
     }
 
     @Override
