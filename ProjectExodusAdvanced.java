@@ -1,39 +1,60 @@
-
 import com.formdev.flatlaf.FlatDarkLaf;
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.*;
-import java.awt.geom.*;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
+import javax.swing.UIManager;
+import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Point;
+import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.Random;
 
 /**
- * PROJECT: ÉXODO SIMULADO [CORE: М.Е.Н.Т.О.С. v8.0]
+ * ÉXODO: LA VENGANZA DE NOX
+ *
+ * Nox, un gato callejero, cruza seis barrios de una ciudad controlada por la pandilla
+ * de perros de Don Colmillo para rescatar a su familia. Ver HISTORIA.md.
  */
-
 public class ProjectExodusAdvanced extends JFrame {
 
-    private CardLayout cardLayout;
-    private JPanel mainPanel;
-    private MainMenuPanel menuPanel;
-    private LabyrinthPanel gamePanel;
+    private final CardLayout cardLayout;
+    private final JPanel mainPanel;
+    private final MainMenuPanel menuPanel;
+    private final LabyrinthPanel gamePanel;
 
     public ProjectExodusAdvanced() {
-        // Inicialización del Motor de Diseño usando la librería instalada por Maven
         try {
             UIManager.setLookAndFeel(new FlatDarkLaf());
         } catch (Exception ex) {
-            System.err.println("Error al cargar FlatLaf. Revisa tu pom.xml.");
+            System.err.println("Error al cargar FlatLaf: " + ex.getMessage());
         }
 
-        setTitle("PROYECTO ÉXODO [SECURE LINK] - NIGHT PROTOCOL");
+        setTitle("ÉXODO: LA VENGANZA DE NOX");
         setSize(1024, 768);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setResizable(false);
 
-        // UI Core
         cardLayout = new CardLayout();
         mainPanel = new JPanel(cardLayout);
 
@@ -42,229 +63,175 @@ public class ProjectExodusAdvanced extends JFrame {
 
         mainPanel.add(menuPanel, "MENU");
         mainPanel.add(gamePanel, "LABYRINTH");
-
         add(mainPanel);
+
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) { AudioEngine.shutdown(); }
+        });
+
         setVisible(true);
     }
 
-    public void switchState(String state) {
-        cardLayout.show(mainPanel, state);
-        if (state.equals("LABYRINTH")) {
-            gamePanel.initNewGame();
-            gamePanel.requestFocusInWindow();
-        }
+    public void goToMenu() {
+        cardLayout.show(mainPanel, "MENU");
+        menuPanel.refresh();
+        AudioEngine.setMusicMode(0);
+        AudioEngine.setBossMode(false);
+        AudioEngine.setTension(0);
+    }
+
+    public void startNewGame(int difficulty) {
+        cardLayout.show(mainPanel, "LABYRINTH");
+        gamePanel.startNewGame(difficulty);
+    }
+
+    public void continueSavedGame() {
+        cardLayout.show(mainPanel, "LABYRINTH");
+        gamePanel.continueSavedGame();
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new ProjectExodusAdvanced());
+        SwingUtilities.invokeLater(() -> {
+            AudioEngine.start();
+            AudioEngine.setMusicMode(0);
+            new ProjectExodusAdvanced();
+        });
     }
 }
 
-// --- MÓDULO 1: MENÚ CIBERNÉTICO ---
+/** Menú principal: lluvia de fondo, Nox acechando y selección de dificultad. */
 class MainMenuPanel extends JPanel implements ActionListener {
-    private ProjectExodusAdvanced host;
-    private Timer bgTimer;
-    private ArrayList<Point> stars;
-    private Random rand = new Random();
 
-    public MainMenuPanel(ProjectExodusAdvanced host) {
+    private final ProjectExodusAdvanced host;
+    private final ArrayList<Point> rain = new ArrayList<>();
+    private final Random rand = new Random();
+    private final JButton btnContinue;
+    private final JButton btnMusic;
+    private final JButton btnSfx;
+    private final JLabel saveLabel;
+    private int frame = 0;
+
+    MainMenuPanel(ProjectExodusAdvanced host) {
         this.host = host;
         setLayout(new GridBagLayout());
-        setBackground(new Color(5, 8, 12)); 
+        setBackground(new Color(6, 5, 9));
 
-        stars = new ArrayList<>();
-        for (int i = 0; i < 100; i++) {
-            stars.add(new Point(rand.nextInt(1024), rand.nextInt(768)));
-        }
-        bgTimer = new Timer(50, this);
-        bgTimer.start();
+        for (int i = 0; i < 170; i++) rain.add(new Point(rand.nextInt(1024), rand.nextInt(768)));
+        new Timer(30, this).start();
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridwidth = GridBagConstraints.REMAINDER;
-        gbc.alignmentX = Component.CENTER_ALIGNMENT;
+        gbc.anchor = GridBagConstraints.CENTER;
 
-        JLabel title = new JLabel("М.Е.Н.Т.О.С. v8.0");
-        title.setFont(new Font("Consolas", Font.BOLD, 60));
-        title.setForeground(new Color(0, 200, 255));
-        
-        JLabel subtitle = new JLabel(">> SIMULACIÓN ESTRUCTURAL <<");
-        subtitle.setFont(new Font("Consolas", Font.PLAIN, 18));
-        subtitle.setForeground(new Color(150, 150, 170));
+        JLabel title = new JLabel("ÉXODO: LA VENGANZA DE NOX");
+        title.setFont(new Font("Consolas", Font.BOLD, 48));
+        title.setForeground(new Color(255, 40, 40));
 
-        JButton btnStart = new JButton("INICIALIZAR DESPLIEGUE");
-        btnStart.setFont(new Font("Consolas", Font.BOLD, 22));
-        btnStart.setFocusPainted(false);
-        btnStart.setBackground(new Color(15, 25, 35));
-        btnStart.setForeground(new Color(0, 255, 150));
-        btnStart.setBorder(BorderFactory.createLineBorder(new Color(0, 255, 150), 2));
-        btnStart.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnStart.setPreferredSize(new Dimension(350, 60));
+        JLabel subtitle = new JLabel(">> RESCATA A TU FAMILIA DE LA PANDILLA DE COLMILLO <<");
+        subtitle.setFont(new Font("Consolas", Font.PLAIN, 17));
+        subtitle.setForeground(new Color(160, 160, 165));
 
-        btnStart.addMouseListener(new MouseAdapter() {
-            public void mouseEntered(MouseEvent evt) {
-                btnStart.setBackground(new Color(0, 255, 150));
-                btnStart.setForeground(Color.BLACK);
-            }
-            public void mouseExited(MouseEvent evt) {
-                btnStart.setBackground(new Color(15, 25, 35));
-                btnStart.setForeground(new Color(0, 255, 150));
-            }
-        });
+        btnContinue = styledButton("CONTINUAR PARTIDA", new Color(90, 200, 255), 330, 50);
+        btnContinue.addActionListener(e -> host.continueSavedGame());
 
-        btnStart.addActionListener(e -> host.switchState("LABYRINTH"));
+        saveLabel = new JLabel(" ");
+        saveLabel.setFont(new Font("Consolas", Font.ITALIC, 13));
+        saveLabel.setForeground(new Color(110, 160, 190));
+
+        JLabel diffLabel = new JLabel("ELIGE TU NIVEL DE PESADILLA:");
+        diffLabel.setFont(new Font("Consolas", Font.BOLD, 16));
+        diffLabel.setForeground(new Color(205, 205, 205));
+
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
+        btnRow.setOpaque(false);
+        btnRow.add(difficultyButton("FÁCIL", 0, new Color(60, 190, 90)));
+        btnRow.add(difficultyButton("NORMAL", 1, new Color(255, 60, 60)));
+        btnRow.add(difficultyButton("PESADILLA", 2, new Color(160, 40, 220)));
+
+        JPanel soundRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 14, 4));
+        soundRow.setOpaque(false);
+        btnMusic = styledButton("MÚSICA: ON", new Color(200, 200, 200), 170, 36);
+        btnSfx = styledButton("EFECTOS: ON", new Color(200, 200, 200), 170, 36);
+        btnMusic.addActionListener(e -> { AudioEngine.toggleMusic(); refreshSoundLabels(); });
+        btnSfx.addActionListener(e -> { AudioEngine.toggleSfx(); refreshSoundLabels(); });
+        soundRow.add(btnMusic);
+        soundRow.add(btnSfx);
+
+        JLabel hint = new JLabel("En el juego: [WASD] Mover  [ESPACIO] Atacar  [E] Tienda  [M] Mapa  [P] Pausa");
+        hint.setFont(new Font("Consolas", Font.ITALIC, 13));
+        hint.setForeground(new Color(100, 100, 100));
 
         add(title, gbc);
-        add(Box.createVerticalStrut(10), gbc);
+        add(Box.createVerticalStrut(12), gbc);
         add(subtitle, gbc);
-        add(Box.createVerticalStrut(80), gbc);
-        add(btnStart, gbc);
+        add(Box.createVerticalStrut(40), gbc);
+        add(btnContinue, gbc);
+        add(saveLabel, gbc);
+        add(Box.createVerticalStrut(26), gbc);
+        add(diffLabel, gbc);
+        add(btnRow, gbc);
+        add(Box.createVerticalStrut(14), gbc);
+        add(soundRow, gbc);
+        add(Box.createVerticalStrut(18), gbc);
+        add(hint, gbc);
+
+        refresh();
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2d = (Graphics2D) g;
-        g2d.setColor(new Color(0, 200, 255, 50));
-        for (Point p : stars) {
-            g2d.fillRect(p.x, p.y, 2, 2);
+    /** Se llama cada vez que se vuelve al menú, para reflejar la partida guardada. */
+    void refresh() {
+        boolean has = SaveManager.hasSave();
+        btnContinue.setVisible(has);
+        if (has) {
+            SaveManager.Progress p = SaveManager.load();
+            int rescued = 0;
+            for (boolean b : p.family) if (b) rescued++;
+            saveLabel.setText("Barrio " + p.level + "   |   $" + p.money
+                            + "   |   " + rescued + "/3 rescatados");
+        } else {
+            saveLabel.setText(" ");
         }
-    }
-
-    @Override
-    public void actionPerformed(ActionEvent e) {
-        for (Point p : stars) {
-            p.y += 2;
-            if (p.y > 768) {
-                p.y = 0;
-                p.x = rand.nextInt(1024);
-            }
-        }
+        refreshSoundLabels();
+        revalidate();
         repaint();
     }
-}
 
-// --- MÓDULO 2: MOTOR DE JUEGO (LABERINTO) ---
-class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
-    private ProjectExodusAdvanced host;
-    private Timer gameLoop;
-    
-    private final int TILE_SIZE = 50;
-    private final int MAP_WIDTH = 40;
-    private final int MAP_HEIGHT = 40;
-    private int[][] map; 
-    
-    private double playerX, playerY;
-    private int playerHealth = 100;
-    private int playerCredits = 2500;
-    private double playerSpeed = 6.0;
-    private boolean up, down, left, right;
-    
-    private ArrayList<RainDrop> rainSystem;
-    private ArrayList<Trail> playerTrail;
-    private Random rand = new Random();
-    private int animationFrame = 0;
-
-    public LabyrinthPanel(ProjectExodusAdvanced host) {
-        this.host = host;
-        setBackground(new Color(5, 5, 8)); 
-        setFocusable(true);
-        addKeyListener(this);
-        
-        rainSystem = new ArrayList<>();
-        playerTrail = new ArrayList<>();
-        
-        gameLoop = new Timer(16, this); 
+    private void refreshSoundLabels() {
+        btnMusic.setText("MÚSICA: " + (AudioEngine.isMusicOn() ? "ON" : "OFF"));
+        btnSfx.setText("EFECTOS: " + (AudioEngine.isSfxOn() ? "ON" : "OFF"));
     }
 
-    public void initNewGame() {
-        generateProceduralMap();
-        playerX = TILE_SIZE * 2;
-        playerY = TILE_SIZE * 2;
-        up = down = left = right = false;
-        
-        rainSystem.clear();
-        for(int i = 0; i < 200; i++) {
-            rainSystem.add(new RainDrop());
-        }
-        
-        gameLoop.start();
+    private JButton difficultyButton(String text, int difficulty, Color color) {
+        JButton b = styledButton(text, color, 180, 55);
+        b.addActionListener(e -> host.startNewGame(difficulty));
+        return b;
     }
 
-    private void generateProceduralMap() {
-        map = new int[MAP_WIDTH][MAP_HEIGHT];
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            for (int y = 0; y < MAP_HEIGHT; y++) {
-                map[x][y] = 1;
+    private JButton styledButton(String text, Color color, int w, int h) {
+        JButton b = new JButton(text);
+        b.setFont(new Font("Consolas", Font.BOLD, h > 40 ? 18 : 14));
+        b.setFocusPainted(false);
+        b.setBackground(new Color(18, 18, 22));
+        b.setForeground(color);
+        b.setBorder(BorderFactory.createLineBorder(color, 2));
+        b.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        b.setPreferredSize(new Dimension(w, h));
+        b.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent evt) {
+                b.setBackground(color);
+                b.setForeground(Color.BLACK);
+                AudioEngine.play("blip", 0.35);
             }
-        }
-        int cx = 2, cy = 2;
-        for (int i = 0; i < 800; i++) {
-            map[cx][cy] = 0;
-            if(cx+1 < MAP_WIDTH) map[cx+1][cy] = 0;
-            if(cy+1 < MAP_HEIGHT) map[cx][cy+1] = 0;
 
-            int dir = rand.nextInt(4);
-            if (dir == 0 && cx > 2) cx -= 2;
-            else if (dir == 1 && cx < MAP_WIDTH - 3) cx += 2;
-            else if (dir == 2 && cy > 2) cy -= 2;
-            else if (dir == 3 && cy < MAP_HEIGHT - 3) cy += 2;
-        }
-
-        for(int i = 0; i < 30; i++) {
-            int rx = rand.nextInt(MAP_WIDTH);
-            int ry = rand.nextInt(MAP_HEIGHT);
-            if(map[rx][ry] == 0) {
-                map[rx][ry] = 2;
+            @Override
+            public void mouseExited(MouseEvent evt) {
+                b.setBackground(new Color(18, 18, 22));
+                b.setForeground(color);
             }
-        }
-    }
-
-    @Override
-    public void actionPerformed(ActionEvent e) {
-        double nextX = playerX;
-        double nextY = playerY;
-
-        if (up) nextY -= playerSpeed;
-        if (down) nextY += playerSpeed;
-        if (left) nextX -= playerSpeed;
-        if (right) nextX += playerSpeed;
-
-        int tileX = (int) (nextX / TILE_SIZE);
-        int tileY = (int) (nextY / TILE_SIZE);
-        int tileRight = (int) ((nextX + 30) / TILE_SIZE);
-        int tileBottom = (int) ((nextY + 30) / TILE_SIZE);
-
-        if (tileX >= 0 && tileRight < MAP_WIDTH && tileY >= 0 && tileBottom < MAP_HEIGHT) {
-            if (map[tileX][tileY] != 1 && map[tileRight][tileY] != 1 &&
-                map[tileX][tileBottom] != 1 && map[tileRight][tileBottom] != 1) {
-                playerX = nextX;
-                playerY = nextY;
-            }
-        }
-
-        int centerTileX = (int) ((playerX + 15) / TILE_SIZE);
-        int centerTileY = (int) ((playerY + 15) / TILE_SIZE);
-        if(map[centerTileX][centerTileY] == 2) {
-            map[centerTileX][centerTileY] = 0; 
-            playerCredits += 150; 
-        }
-
-        if (up || down || left || right) {
-            animationFrame++;
-            if (animationFrame % 3 == 0) {
-                playerTrail.add(new Trail(playerX + 5, playerY + 30));
-            }
-        }
-
-        Iterator<Trail> it = playerTrail.iterator();
-        while (it.hasNext()) {
-            Trail t = it.next();
-            t.life -= 0.05f;
-            if (t.life <= 0) it.remove();
-        }
-        for(RainDrop r : rainSystem) r.update();
-
-        repaint();
+        });
+        return b;
     }
 
     @Override
@@ -273,113 +240,31 @@ class LabyrinthPanel extends JPanel implements ActionListener, KeyListener {
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        int camX = (int)playerX - getWidth() / 2 + 15;
-        int camY = (int)playerY - getHeight() / 2 + 15;
+        // Siluetas de edificios al fondo
+        g2d.setColor(new Color(13, 12, 18));
+        for (int i = 0; i < 14; i++) {
+            int h = 120 + Sprites.hash(i, 7) % 260;
+            g2d.fillRect(i * 78, getHeight() - h, 70, h);
+        }
 
-        g2d.translate(-camX, -camY);
+        g2d.setColor(new Color(110, 115, 135, 60));
+        for (Point p : rain) g2d.drawLine(p.x, p.y, p.x - 2, p.y + 10);
 
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            for (int y = 0; y < MAP_HEIGHT; y++) {
-                if (map[x][y] == 1) {
-                    g2d.setColor(new Color(20, 25, 35)); 
-                    g2d.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    g2d.setColor(new Color(40, 45, 60)); 
-                    g2d.drawRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                } else if (map[x][y] == 2) {
-                    g2d.setColor(new Color(0, 255, 200));
-                    g2d.fillOval(x * TILE_SIZE + 15, y * TILE_SIZE + 15, 20, 20);
-                }
+        // Nox acechando en la esquina inferior
+        Sprites.drawNox(g2d, 70, getHeight() - 130, 3, frame, false, false, false);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        frame++;
+        for (Point p : rain) {
+            p.y += 20;
+            p.x -= 4;
+            if (p.y > getHeight()) {
+                p.y = 0;
+                p.x = rand.nextInt(1024 + 200);
             }
         }
-
-        for(Trail t : playerTrail) {
-            g2d.setColor(new Color(0, 200, 255, (int)(t.life * 255)));
-            g2d.fillRect((int)t.x, (int)t.y, 20, 5);
-        }
-
-        g2d.setColor(new Color(0, 150, 255));
-        g2d.fillRect((int)playerX, (int)playerY, 30, 30);
-        g2d.setColor(Color.WHITE);
-        
-        if ((animationFrame / 10) % 2 == 0 && (up || down || left || right)) {
-            g2d.fillRect((int)playerX, (int)playerY + 30, 10, 10);
-            g2d.fillRect((int)playerX + 20, (int)playerY + 30, 10, 10);
-        } else {
-            g2d.fillRect((int)playerX + 5, (int)playerY + 30, 10, 10);
-            g2d.fillRect((int)playerX + 15, (int)playerY + 30, 10, 10);
-        }
-
-        g2d.translate(camX, camY);
-
-        g2d.setColor(new Color(150, 180, 255, 100));
-        for(RainDrop r : rainSystem) {
-            g2d.drawLine((int)r.x, (int)r.y, (int)r.x - 2, (int)r.y + 10);
-        }
-
-        Point2D center = new Point2D.Float(getWidth() / 2f, getHeight() / 2f);
-        float[] dist = {0.0f, 0.7f, 1.0f};
-        Color[] colors = {
-            new Color(0, 0, 0, 0),       
-            new Color(5, 8, 12, 200),    
-            new Color(5, 5, 8, 255)      
-        };
-        RadialGradientPaint p = new RadialGradientPaint(center, 350, dist, colors);
-        g2d.setPaint(p);
-        g2d.fillRect(0, 0, getWidth(), getHeight());
-
-        g2d.setColor(new Color(0, 0, 0, 150));
-        g2d.fillRect(10, 10, 350, 40);
-        g2d.setColor(new Color(0, 255, 150));
-        g2d.setFont(new Font("Consolas", Font.BOLD, 18));
-        g2d.drawString("INTEGRIDAD: " + playerHealth + "% | NODOS FINCH: " + playerCredits, 20, 35);
-        
-        g2d.setColor(Color.GRAY);
-        g2d.drawString("[ESC] ABORTAR SIMULACIÓN", getWidth() - 250, 35);
+        repaint();
     }
-
-    class Trail {
-        double x, y;
-        float life = 1.0f;
-        public Trail(double x, double y) { this.x = x; this.y = y; }
-    }
-
-    class RainDrop {
-        double x, y, speed;
-        public RainDrop() { reset(); y = rand.nextInt(768); }
-        public void reset() {
-            x = rand.nextInt(1024 + 200); 
-            y = -20;
-            speed = 15 + rand.nextDouble() * 10;
-        }
-        public void update() {
-            y += speed;
-            x -= speed / 3; 
-            if (y > 768 || x < 0) reset();
-        }
-    }
-
-    @Override
-    public void keyPressed(KeyEvent e) {
-        int key = e.getKeyCode();
-        if (key == KeyEvent.VK_W || key == KeyEvent.VK_UP) up = true;
-        if (key == KeyEvent.VK_S || key == KeyEvent.VK_DOWN) down = true;
-        if (key == KeyEvent.VK_A || key == KeyEvent.VK_LEFT) left = true;
-        if (key == KeyEvent.VK_D || key == KeyEvent.VK_RIGHT) right = true;
-        
-        if (key == KeyEvent.VK_ESCAPE) {
-            gameLoop.stop();
-            host.switchState("MENU");
-        }
-    }
-
-    @Override
-    public void keyReleased(KeyEvent e) {
-        int key = e.getKeyCode();
-        if (key == KeyEvent.VK_W || key == KeyEvent.VK_UP) up = false;
-        if (key == KeyEvent.VK_S || key == KeyEvent.VK_DOWN) down = false;
-        if (key == KeyEvent.VK_A || key == KeyEvent.VK_LEFT) left = false;
-        if (key == KeyEvent.VK_D || key == KeyEvent.VK_RIGHT) right = false;
-    }
-
-    @Override public void keyTyped(KeyEvent e) {}
 }

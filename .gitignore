@@ -1,0 +1,15 @@
+# Archivos compilados de Java
+*.class
+
+# Partida guardada (es de cada jugador, no del proyecto)
+exodo_save.properties
+
+# Datos del servidor Python
+server_data.json
+__pycache__/
+*.pyc
+
+# Carpetas de entorno
+.venv/
+venv/
+bin/
