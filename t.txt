@@ -1,0 +1,62 @@
+[OK]   Cinematica del prologo arranca al empezar partida
+[OK]   4000 frames de juego + dibujo, sin excepciones
+       dinero=150  bajas=0  cordura=100
+[OK]   Tienda: acero=true ballesta=true plasma=true molotov=true silbato=true armadura=3 atun=1
+[OK]   Las 5 armas disparan sin errores (incluido el molotov explotando)
+[OK]   Silbato aturde y la lata de atun cura -> vida=90 atun restante=0
+[OK]   Los 7 tipos de perro (callejero, armado, corredor, bruto, escudo, alfa, kamikaze) funcionan
+[OK]   Pantallas de susto, pausa, muerte, mapa y transicion
+[OK]   Los dos finales (bueno y oscuro) se dibujan
+[OK]   Barrio 1 completable (salida, jefe, tienda y las 3 fotos alcanzables; 99% del mapa accesible)
+[OK]   Barrio 2 completable (salida, jefe, tienda y las 3 fotos alcanzables; 100% del mapa accesible)
+[OK]   Barrio 3 completable (salida, jefe, tienda y las 3 fotos alcanzables; 100% del mapa accesible)
+[OK]   Barrio 4 completable (salida, jefe, tienda y las 3 fotos alcanzables; 100% del mapa accesible)
+[OK]   Barrio 5 completable (salida, jefe, tienda y las 3 fotos alcanzables; 100% del mapa accesible)
+[OK]   Barrio 6 completable (salida, jefe, tienda y las 3 fotos alcanzables; 100% del mapa accesible)
+[OK]   150 mapas aleatorios: todos con salida y con el jefe alcanzable
+[OK]   Guardado leido: barrio=6 dinero=15100 armadura=3 atun=0 molotov=true
+[OK]   AudioEngine arranco. Sonido disponible=true
+[OK]   Gamepad: XInput=true conectado=false (xinput1_4.dll), 40 lecturas sin excepciones
+[OK]   200 frames con el mando dentro del bucle de juego
+[OK]   El juego lee el mando 1 vez por fotograma (100 en 100 frames)
+[OK]   El menu NO lee el mando mientras se juega (0 lecturas en 100 frames)
+[OK]   En el menu si lee el mando (100 en 100 frames)
+[OK]   Jefe del barrio 1 persigue bien: recorrio 1599 px, se acerco 94% (de 516 a 33), atascado el 3% del tiempo que estuvo lejos
+[OK]   Jefe del barrio 2 persigue bien: recorrio 1289 px, se acerco 94% (de 516 a 31), atascado el 6% del tiempo que estuvo lejos
+[OK]   Jefe del barrio 3 persigue bien: recorrio 2475 px, se acerco 89% (de 516 a 57), atascado el 6% del tiempo que estuvo lejos
+[OK]   Jefe del barrio 4 persigue bien: recorrio 1021 px, se acerco 94% (de 516 a 32), atascado el 5% del tiempo que estuvo lejos
+[OK]   Jefe del barrio 5 persigue bien: recorrio 6168 px, se acerco 64% (de 516 a 184), atascado el 8% del tiempo que estuvo lejos
+[OK]   Jefe del barrio 6 persigue bien: recorrio 822 px, se acerco 93% (de 516 a 36), atascado el 3% del tiempo que estuvo lejos
+[OK]   Los 6 jefes se mueven sin quedarse encajados
+[OK]   Ataque especial del barrio 1 (Rocky lanza bidones) funciona
+[OK]   Ataque especial del barrio 2 (Spike vuelca puestos) funciona
+[OK]   Ataque especial del barrio 3 (Rex embosca) funciona
+[OK]   Ataque especial del barrio 4 (Titan lanza contenedor) funciona
+[OK]   Ataque especial del barrio 5 (Shadow salta) funciona
+[OK]   Ataque especial del barrio 6 (Colmillo apaga las luces) funciona
+[OK]   Secretos colocados: 3 fotos, 1 bidon con premio, 1 callejon quemado
+[OK]   Recoger una foto: +12 de cordura y muestra el recuerdo
+[OK]   El bidon secreto suelta $500 al romperlo
+[OK]   Pantalla del callejon quemado dibujada
+[OK]   Bonus de familia: vida 100->125, dano x1.15, cordura baja x0.6
+[OK]   Logros: se desbloquean una sola vez (1/25)
+[OK]   Los logros se guardan y se releen del disco
+[OK]   Accesibilidad: con los sustos apagados no hay pantallazo, pero el juego no cambia
+[OK]   El callejon quemado sale UNA vez y devuelve el control (no se traba)
+[OK]   Las pantallas de historia se pueden saltar con ESPACIO
+[OK]   El recuerdo y el rescate tambien se pueden saltar
+[OK]   Alucinaciones: 0 con la cordura llena, 1 con la cordura por los suelos
+[OK]   Los perros fantasma no hacen dano: solo estan en su cabeza
+[OK]   Susto por fases: aviso -> golpe -> resaca, y se cierra solo
+[OK]   El juego se dibuja sin errores en 1024x768, 1920x1080, 1366x768, 800x600 y 2560x1440
+[OK]   Los 10 sustos se dibujan en sus tres fases sin errores
+[OK]   Variedad de sustos: 10 tipos distintos y ninguno repetido seguido
+[OK]   El susto de Colmillo no sale en los primeros barrios
+[OK]   Cinematica del prologo: 6 planos en 31 segundos, y termina sola
+[OK]   Cinematica del final bueno: 4 planos en 19 segundos, y termina sola
+[OK]   Cinematica del final oscuro: 4 planos en 20 segundos, y termina sola
+[OK]   Las tres cinematicas se pueden saltar
+[OK]   El prologo del juego pasa por su cinematica y arranca el barrio 1
+[OK]   El final reproduce su cinematica y despues muestra la puntuacion
+
+=== TODAS LAS PRUEBAS PASARON ===

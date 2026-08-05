@@ -17,16 +17,28 @@ public final class Tiles {
     public static final int VOID = 7;
     /** Suelo decorado: vías, alfombra, tablón. Se puede pisar. */
     public static final int DECOR = 8;
-    /** Obstáculo pequeño: bidón, caja, mueble. Bloquea. */
+    /** Obstáculo pequeño: bidón, caja, mueble. Bloquea, pero se puede romper. */
     public static final int PROP = 9;
+    /** Foto quemada de la familia de Nox: recuerdo escondido por el barrio. */
+    public static final int PHOTO = 10;
+    /** Igual que PROP por fuera, pero guarda dinero dentro. Uno por barrio. */
+    public static final int PROP_SECRET = 11;
+    /** Lo que quedó del callejón donde vivía Nox con su familia. */
+    public static final int HOME = 12;
 
     private Tiles() { }
 
     public static boolean blocks(int tile) {
-        return tile == WALL || tile == WATER || tile == VOID || tile == PROP || tile == SHOP;
+        return tile == WALL || tile == WATER || tile == VOID || tile == PROP
+            || tile == SHOP || tile == PROP_SECRET || tile == HOME;
     }
 
     public static boolean walkable(int tile) {
-        return tile == FLOOR || tile == COIN || tile == DECOR || tile == EXIT;
+        return tile == FLOOR || tile == COIN || tile == DECOR || tile == EXIT || tile == PHOTO;
+    }
+
+    /** Se puede destruir a golpes. */
+    public static boolean breakable(int tile) {
+        return tile == PROP || tile == PROP_SECRET;
     }
 }

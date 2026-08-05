@@ -13,6 +13,10 @@ public final class MapGenerator {
 
     private MapGenerator() { }
 
+    /**
+     * Construye el mapa de un barrio: elige su algoritmo, lo rodea de muro, despeja
+     * la entrada y la salida, garantiza un camino entre ambas y conecta lo aislado.
+     */
     public static int[][] generate(int level, Random rand, int w, int h) {
         int[][] m;
         switch (level) {
@@ -65,6 +69,22 @@ public final class MapGenerator {
         }
     }
 
+    /**
+     * Marca todas las casillas a las que se puede llegar caminando desde un punto.
+     * El motor lo usa para no colocar nunca al jefe, las tiendas ni los enemigos
+     * dentro de una zona incomunicada.
+     */
+    public static boolean[][] reachable(int[][] m, int sx, int sy) {
+        int w = m.length, h = m[0].length;
+        boolean[][] visited = new boolean[w][h];
+        flood(m, visited, sx, sy, w, h);
+        return visited;
+    }
+
+    /**
+     * Algoritmo de inundación: marca todo el suelo conectado con el punto de partida
+     * y devuelve esas casillas. Es la base de todas las comprobaciones de acceso.
+     */
     private static List<int[]> flood(int[][] m, boolean[][] visited, int sx, int sy, int w, int h) {
         List<int[]> region = new ArrayList<>();
         if (sx < 0 || sy < 0 || sx >= w || sy >= h || visited[sx][sy] || !Tiles.walkable(m[sx][sy])) {
@@ -90,6 +110,7 @@ public final class MapGenerator {
         return region;
     }
 
+    /** Casilla del grupo que está más cerca de un punto dado. */
     private static int[] nearest(List<int[]> pool, int[] from) {
         int[] best = pool.get(0);
         long bestDist = Long.MAX_VALUE;
@@ -328,6 +349,7 @@ public final class MapGenerator {
         return m;
     }
 
+    /** Pasillo en L con alfombra entre dos salones de la mansión, de dos casillas de ancho. */
     private static void corridor(int[][] m, int x0, int y0, int x1, int y1, int w, int h) {
         int x = x0, y = y0, guard = 0;
         while (x != x1 && guard++ < 400) {
@@ -371,6 +393,10 @@ public final class MapGenerator {
         }
     }
 
+    /**
+     * Excava a la fuerza un pasillo de 3 casillas de ancho entre dos puntos, avanzando
+     * en zigzag. Es lo que garantiza que siempre se pueda llegar de la entrada a la salida.
+     */
     private static void carve(int[][] m, Random rand, int x0, int y0, int x1, int y1, int w, int h) {
         int x = x0, y = y0, guard = 0;
         while ((x != x1 || y != y1) && guard++ < 6000) {
@@ -393,6 +419,7 @@ public final class MapGenerator {
         }
     }
 
+    /** Alguna de las ocho casillas de alrededor es del tipo indicado. */
     private static boolean touches(int[][] m, int x, int y, int tile, int w, int h) {
         for (int i = -1; i <= 1; i++) {
             for (int j = -1; j <= 1; j++) {

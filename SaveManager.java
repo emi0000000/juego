@@ -46,8 +46,25 @@ public final class SaveManager {
         public int armor = 0;
         public int tuna = 0;
         public boolean[] family = new boolean[3];
+        /** Una casilla por cada foto escondida de la ciudad. */
+        public boolean[] photos = new boolean[Memories.TOTAL];
+        public int deaths = 0;
         public int score = 0;
         public long playTimeMs = 0;
+
+        String photosAsString() {
+            StringBuilder sb = new StringBuilder();
+            for (boolean b : photos) sb.append(b ? '1' : '0');
+            return sb.toString();
+        }
+
+        void photosFromString(String s) {
+            photos = new boolean[Memories.TOTAL];
+            if (s == null) return;
+            for (int i = 0; i < Math.min(s.length(), photos.length); i++) {
+                photos[i] = s.charAt(i) == '1';
+            }
+        }
 
         public String familyAsString() {
             StringBuilder sb = new StringBuilder();
@@ -70,6 +87,7 @@ public final class SaveManager {
         return new File(SAVE_FILE).exists();
     }
 
+    /** Guarda la partida en disco y, si hay servidor, la manda también por red. */
     public static void save(Progress p) {
         Properties props = new Properties();
         props.setProperty("level", String.valueOf(p.level));
@@ -85,6 +103,8 @@ public final class SaveManager {
         props.setProperty("armor", String.valueOf(p.armor));
         props.setProperty("tuna", String.valueOf(p.tuna));
         props.setProperty("family", p.familyAsString());
+        props.setProperty("photos", p.photosAsString());
+        props.setProperty("deaths", String.valueOf(p.deaths));
         props.setProperty("score", String.valueOf(p.score));
         props.setProperty("playTimeMs", String.valueOf(p.playTimeMs));
 
@@ -97,6 +117,10 @@ public final class SaveManager {
         syncToServerAsync(p);
     }
 
+    /**
+     * Lee la partida guardada. Si el archivo no existe o está corrupto devuelve una
+     * partida nueva en vez de fallar: perder el guardado no puede impedir jugar.
+     */
     public static Progress load() {
         Progress p = new Progress();
         File f = new File(SAVE_FILE);
@@ -123,6 +147,8 @@ public final class SaveManager {
         p.armor = intOf(props, "armor", 0);
         p.tuna = intOf(props, "tuna", 0);
         p.familyFromString(props.getProperty("family", "000"));
+        p.photosFromString(props.getProperty("photos", ""));
+        p.deaths = intOf(props, "deaths", 0);
         p.score = intOf(props, "score", 0);
         try {
             p.playTimeMs = Long.parseLong(props.getProperty("playTimeMs", "0").trim());
@@ -164,11 +190,19 @@ public final class SaveManager {
              + "\"armor\":" + p.armor + ","
              + "\"tuna\":" + p.tuna + ","
              + "\"family\":\"" + p.familyAsString() + "\","
+             + "\"photos\":\"" + p.photosAsString() + "\","
+             + "\"deaths\":" + p.deaths + ","
              + "\"score\":" + p.score + ","
              + "\"play_time_ms\":" + p.playTimeMs
              + "}";
     }
 
+    /**
+     * Manda la partida al servidor en un hilo aparte.
+     *
+     * Nunca en el hilo del juego: si el servidor estuviera apagado, esperar la
+     * respuesta congelaría la pantalla. Así como mucho el indicador se queda en LOCAL.
+     */
     public static void syncToServerAsync(Progress p) {
         Progress copy = new Progress();
         copy.level = p.level;
@@ -184,6 +218,8 @@ public final class SaveManager {
         copy.armor = p.armor;
         copy.tuna = p.tuna;
         copy.family = p.family.clone();
+        copy.photos = p.photos.clone();
+        copy.deaths = p.deaths;
         copy.score = p.score;
         copy.playTimeMs = p.playTimeMs;
 
@@ -203,6 +239,7 @@ public final class SaveManager {
         t.start();
     }
 
+    /** Envío HTTP con 900 ms de espera máxima. Si falla, se marca el modo LOCAL. */
     private static void post(String path, String json) {
         HttpURLConnection conn = null;
         try {

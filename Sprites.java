@@ -96,6 +96,10 @@ public final class Sprites {
         return img;
     }
 
+    /**
+     * Dibuja una casilla desde cero. Solo se llama la primera vez que se pide cada
+     * combinación de material, barrio y variante; después vive en la caché.
+     */
     private static BufferedImage renderTile(int type, int theme, int variant, int s) {
         BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
@@ -512,6 +516,7 @@ public final class Sprites {
         }
     }
 
+    /** El vacío entre azoteas: negro con las luces de la calle veinte pisos más abajo. */
     private static void emptiness(Graphics2D g, int s, Random r) {
         g.setColor(new Color(6, 6, 10));
         g.fillRect(0, 0, s, s);
@@ -543,6 +548,7 @@ public final class Sprites {
         }
     }
 
+    /** Moneda girando: el ancho se estrecha con un seno para simular la rotación. */
     public static void drawCoin(Graphics2D g, int px, int py, int tile, int frame) {
         double spin = Math.abs(Math.sin(frame * 0.06 + px * 0.01));
         int w = (int) (6 + 14 * spin);
@@ -562,6 +568,7 @@ public final class Sprites {
         }
     }
 
+    /** Puesto del Mercado Negro, con el neón rosa latiendo. */
     public static void drawStore(Graphics2D g, int tx, int ty, int tile, int frame) {
         int px = tx * tile, py = ty * tile;
         g.setColor(new Color(32, 8, 32));
@@ -585,6 +592,10 @@ public final class Sprites {
         g.drawString("ARMAS", px + 6, py + tile - 10);
     }
 
+    /**
+     * Salida del barrio. Cerrada es una cruz roja con un candado; abierta, una flecha
+     * verde que late. El cambio de aspecto es la señal de que el jefe ya cayó.
+     */
     public static void drawExit(Graphics2D g, int tx, int ty, int tile, boolean unlocked, int frame) {
         int px = tx * tile, py = ty * tile;
 
@@ -615,6 +626,99 @@ public final class Sprites {
         }
     }
 
+    /** Foto quemada tirada en el suelo, flotando y brillando para que se vea de lejos. */
+    public static void drawPhoto(Graphics2D g, int px, int py, int tile, int frame) {
+        int cx = px + tile / 2;
+        int cy = py + tile / 2 + (int) (Math.sin(frame * 0.05) * 4);
+
+        int pulse = 45 + (int) (25 * Math.sin(frame * 0.07));
+        g.setColor(new Color(190, 140, 255, pulse));
+        g.fillOval(cx - 22, cy - 22, 44, 44);
+
+        AffineTransform saved = g.getTransform();
+        g.rotate(Math.sin(frame * 0.03) * 0.12, cx, cy);
+        drawBurnedPhoto(g, cx - 17, cy - 13, frame);
+        g.setTransform(saved);
+    }
+
+    /** El dibujo de la foto en sí: papel amarillento con los bordes quemados. */
+    public static void drawBurnedPhoto(Graphics2D g, int x, int y, int frame) {
+        int w = 34, h = 26;
+
+        g.setColor(new Color(0, 0, 0, 90));
+        g.fillRect(x + 2, y + 3, w, h);
+
+        g.setColor(new Color(226, 214, 186));
+        g.fillRect(x, y, w, h);
+        g.setColor(new Color(196, 180, 148));
+        g.drawRect(x, y, w, h);
+
+        // Cuatro siluetas: la familia
+        g.setColor(new Color(120, 108, 92));
+        g.fillOval(x + 5, y + 12, 7, 9);
+        g.fillOval(x + 12, y + 14, 5, 7);
+        g.fillOval(x + 18, y + 14, 5, 7);
+        g.fillOval(x + 24, y + 11, 7, 10);
+        g.setColor(new Color(150, 138, 118));
+        g.fillRect(x + 2, y + 3, w - 4, 6);
+
+        // Bordes quemados, distintos en cada esquina
+        g.setColor(new Color(38, 26, 18));
+        g.fillOval(x - 4, y - 4, 13, 11);
+        g.fillOval(x + w - 8, y + h - 7, 14, 12);
+        g.setColor(new Color(70, 48, 30, 190));
+        g.fillOval(x + w - 10, y - 3, 12, 9);
+        g.fillOval(x - 3, y + h - 8, 11, 11);
+
+        // Una brasa que aún no se apaga del todo
+        int ember = 120 + (int) (90 * Math.sin(frame * 0.11));
+        g.setColor(new Color(255, 130, 40, Math.max(0, Math.min(255, ember))));
+        g.fillOval(x + w - 5, y + h - 4, 4, 4);
+    }
+
+    /** Lo que quedó del callejón de Nox: la caja quemada donde dormían los gatitos. */
+    public static void drawBurnedHome(Graphics2D g, int px, int py, int tile, int frame) {
+        int x = px + 8, y = py + 14;
+
+        g.setColor(new Color(0, 0, 0, 130));
+        g.fillOval(px + 4, py + tile - 16, tile - 8, 13);
+
+        // Ceniza en el suelo
+        g.setColor(new Color(28, 24, 24, 190));
+        g.fillOval(px + 2, py + tile - 24, tile - 4, 20);
+
+        // La caja de cartón, medio derrumbada y negra por el fuego
+        g.setColor(new Color(46, 34, 26));
+        g.fillRect(x, y + 10, 44, 26);
+        g.setColor(new Color(24, 18, 16));
+        g.fillRect(x, y + 10, 44, 8);
+        g.setColor(new Color(70, 52, 36));
+        g.drawRect(x, y + 10, 44, 26);
+
+        // Tablas caídas
+        g.setColor(new Color(38, 28, 22));
+        g.fillRect(x - 4, y + 30, 20, 5);
+        g.fillRect(x + 30, y + 4, 6, 22);
+
+        // La manta que Mitsy arrastró del mercado, ya solo un jirón
+        g.setColor(new Color(96, 40, 44));
+        g.fillOval(x + 6, y + 22, 20, 10);
+        g.setColor(new Color(64, 26, 30));
+        g.drawOval(x + 6, y + 22, 20, 10);
+
+        // Brasas que aún no se han apagado del todo
+        for (int i = 0; i < 3; i++) {
+            int a = 60 + (int) (90 * Math.sin(frame * 0.06 + i * 2.1));
+            g.setColor(new Color(255, 120, 40, Math.max(0, Math.min(255, a))));
+            g.fillOval(x + 8 + i * 14, y + 32 - (i % 2) * 6, 4, 4);
+        }
+
+        // Un resplandor tenue para que se distinga entre la oscuridad
+        int glow = 26 + (int) (12 * Math.sin(frame * 0.045));
+        g.setColor(new Color(255, 150, 70, Math.max(0, glow)));
+        g.fillOval(px + tile / 2 - 30, py + tile / 2 - 30, 60, 60);
+    }
+
     /** Halo de luz para farolas, neones y fuego. Se dibuja después de la oscuridad. */
     public static void drawLight(Graphics2D g, int cx, int cy, float radius, Color color, int intensity) {
         if (radius <= 1) return;
@@ -632,19 +736,36 @@ public final class Sprites {
 
     public static void drawNox(Graphics2D g, int x, int y, int facing, int frame,
                                boolean moving, boolean attacking, boolean hurt, int armor) {
+        drawNox(g, x, y, facing, frame, moving, attacking, hurt, armor, false);
+    }
+
+    /** @param golden modo secreto: Nox dorado */
+    public static void drawNox(Graphics2D g, int x, int y, int facing, int frame,
+                               boolean moving, boolean attacking, boolean hurt, int armor,
+                               boolean golden) {
 
         AffineTransform saved = g.getTransform();
         g.translate(x + 15, y + 15);
         g.scale(1.45, 1.45);
         g.translate(-(x + 15), -(y + 15));
 
-        drawNoxBody(g, x, y, facing, frame, moving, hurt, armor);
+        if (golden) {
+            // Aura dorada del modo secreto
+            try {
+                Point2D c = new Point2D.Float(x + 15, y + 15);
+                g.setPaint(new RadialGradientPaint(c, 44f, new float[]{0f, 1f},
+                    new Color[]{new Color(255, 210, 60, 70), new Color(255, 210, 60, 0)}));
+                g.fillRect(x - 32, y - 32, 94, 94);
+            } catch (Exception ignored) { }
+        }
+
+        drawNoxBody(g, x, y, facing, frame, moving, hurt, armor, golden);
 
         g.setTransform(saved);
     }
 
     private static void drawNoxBody(Graphics2D g, int x, int y, int facing, int frame,
-                                    boolean moving, boolean hurt, int armor) {
+                                    boolean moving, boolean hurt, int armor, boolean golden) {
 
         double walk = moving ? Math.sin(frame * 0.35) : 0;
         int bob = (int) Math.round(moving ? Math.abs(walk) * 2 : 0);
@@ -653,9 +774,12 @@ public final class Sprites {
         g.setColor(new Color(0, 0, 0, 110));
         g.fill(new Ellipse2D.Double(x - 3, y + 28, 36, 11));
 
-        Color fur = hurt ? new Color(120, 40, 40) : new Color(22, 22, 30);
-        Color furDark = hurt ? new Color(80, 25, 25) : new Color(12, 12, 18);
-        Color rim = hurt ? new Color(220, 80, 80) : new Color(70, 90, 130);
+        Color fur = hurt ? new Color(120, 40, 40)
+                  : golden ? new Color(168, 128, 30) : new Color(22, 22, 30);
+        Color furDark = hurt ? new Color(80, 25, 25)
+                      : golden ? new Color(118, 88, 18) : new Color(12, 12, 18);
+        Color rim = hurt ? new Color(220, 80, 80)
+                  : golden ? new Color(255, 220, 90) : new Color(70, 90, 130);
 
         // Cola
         double tailSway = Math.sin(frame * 0.16) * 9;
@@ -771,6 +895,7 @@ public final class Sprites {
         g.draw(new Ellipse2D.Double(hx, hy + 2, 24, 20));
     }
 
+    /** Estela del zarpazo: tres arcos superpuestos que se van apagando. */
     public static void drawClawSlash(Graphics2D g, int cx, int cy, int facing, int power, int frame) {
         int radius = power == 1 ? 115 : 62;
         int baseAngle = facing == 3 ? 0 : facing == 0 ? 90 : facing == 2 ? 180 : 270;

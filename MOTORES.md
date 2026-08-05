@@ -1,6 +1,6 @@
 # CÓMO FUNCIONA POR DENTRO — ÉXODO: LA VENGANZA DE NOX
 
-Este documento explica **los motores que hacen funcionar el juego**, qué hace cada archivo de código y qué librerías se usan. Está pensado para poder explicar el proyecto sin tener que leer las 3.000 líneas de código.
+Este documento explica **los motores que hacen funcionar el juego**, qué hace cada archivo de código y qué librerías se usan. Está pensado para poder explicar el proyecto sin tener que leer las 4.500 líneas de código.
 
 ---
 
@@ -15,7 +15,7 @@ La decisión de diseño más importante de todo el proyecto es esta:
 
 ¿Por qué? Porque así el proyecto se copia a una USB o se clona de GitHub y **funciona igual en cualquier computadora**, sin que se pierda una carpeta de recursos ni haya que instalar nada aparte.
 
-### Los cinco motores
+### Los motores
 
 ```
                     ProjectExodusAdvanced  (ventana + menú)
@@ -23,15 +23,15 @@ La decisión de diseño más importante de todo el proyecto es esta:
                               v
                        LabyrinthPanel   <-- el corazón: bucle de juego
                               |
-        +---------+-----------+-----------+------------+
-        |         |           |           |            |
-        v         v           v           v            v
-   MapGenerator  Sprites   Particles  AudioEngine  SaveManager
-   (escenarios) (gráficos) (efectos)   (sonido)    (guardado)
-                                                        |
-                                                        v
-                                                    server.py
-                                                (opcional, en red)
+     +---------+----------+---------+----------+-----------+
+     |         |          |         |          |           |
+     v         v          v         v          v           v
+ MapGenerator Sprites Particles AudioEngine Gamepad   SaveManager
+ (escenarios)(gráficos)(efectos)  (sonido)   (mando)   (guardado)
+                                                           |
+                                                           v
+                                                       server.py
+                                                   (opcional, en red)
 ```
 
 ---
@@ -50,18 +50,83 @@ gameLoop = new Timer(16, this);   // cada 16 ms llama a actionPerformed()
 
 Cada vez que el temporizador salta, `actionPerformed()` ejecuta en orden:
 
-1. `updatePlayer()` — mueve a Nox, recoge monedas, detecta la tienda y la salida.
-2. `updateBullets()` — mueve los proyectiles y comprueba impactos.
-3. `updateEnemies()` — mueve a los perros, dispara, aplica daño, gestiona a los jefes.
-4. `updateAtmosphere()` — lluvia, parpadeos, brasas, temblor de cámara.
-5. `fx.update()` — avanza las partículas.
-6. `repaint()` — pide a Swing que vuelva a dibujar la pantalla.
+1. `handleGamepad()` — lee el mando de Xbox si hay uno conectado.
+2. `updatePlayer()` — mueve a Nox, recoge monedas, detecta la tienda y la salida.
+3. `updateBullets()` — mueve los proyectiles y comprueba impactos.
+4. `updateEnemies()` — mueve a los perros, dispara, aplica daño, gestiona a los jefes.
+5. `updateAtmosphere()` — lluvia, parpadeos, brasas, temblor de cámara.
+6. `fx.update()` — avanza las partículas.
+7. `repaint()` — pide a Swing que vuelva a dibujar la pantalla.
 
 Después Swing llama a `paintComponent()`, que dibuja **en este orden concreto** (el orden importa: lo que se pinta después tapa lo anterior):
 
 ```
 mundo -> personajes -> partículas -> lluvia -> oscuridad -> luces -> HUD -> menús
 ```
+
+### Pantalla completa sin romper nada
+
+Todo el juego se dibuja **siempre en 1024×768**, pase lo que pase. Al pintar, ese lienzo se escala al tamaño real de la ventana, centrado y con bandas negras si las proporciones no coinciden:
+
+```java
+double scale = Math.min(realW / 1024.0, realH / 768.0);
+g2d.translate(offsetX, offsetY);
+g2d.scale(scale, scale);
+```
+
+Es la parte que evita el problema clásico al añadir pantalla completa: si el código usara el tamaño real de la ventana, en una pantalla de 1920×1080 el HUD se iría a las esquinas, el círculo de luz se descolocaría y el mapa se vería con proporciones distintas. Así, en pantalla completa **todo se ve exactamente igual, solo que más grande**.
+
+Se usa una ventana sin bordes maximizada en lugar del modo exclusivo del sistema: cambia igual de rápido, no altera la resolución del escritorio y si el juego se cerrara mal no deja la pantalla en un estado raro.
+
+### Cuando la cordura se rompe
+
+Por debajo de 68 de cordura empieza a activarse un sistema de **alucinaciones**, con probabilidad creciente:
+
+```java
+private double madness() {
+    return Math.max(0, Math.min(1, (68 - sanity) / 68.0));
+}
+```
+
+Perros que no existen y se desvanecen al acercarte, sonidos posicionados a la espalda sin nada detrás, sombras en el borde de la vista y —en lo más hondo— una barra de vida que miente durante unos fotogramas.
+
+La regla de diseño es que **ninguna alucinación puede hacer daño**. Si un perro imaginario te matara, el jugador dejaría de explorar con la cordura baja y el sistema se volvería un castigo en vez de una atmósfera. La prueba automática comprueba las dos mitades: que con la cordura llena no aparezca ninguna, y que las que aparecen no quiten vida.
+
+### Cinemáticas sin vídeo (`Cinematics.java`)
+
+El prólogo y los dos finales son secuencias narrativas, y están hechas con lo mismo que el resto del juego: **figuras dibujadas con Java 2D**. No hay ni un vídeo ni una imagen.
+
+Una cinemática es una lista de **planos**. Cada plano tiene una duración, un método que lo dibuja y sus frases. Dentro del plano hay un valor `t` que va de 0 a 1, así que mover la cámara es multiplicar por `t`:
+
+```java
+double t = 1 - timer / (double) total;   // 0 al empezar, 1 al acabar
+int arrastre = (int) (t * w * 0.35);     // algo que cruza el plano
+```
+
+Los fundidos a negro de entrada y salida, y la aparición escalonada de cada frase, salen del mismo valor. Las escenas reutilizan piezas comunes —`skyline()`, `lluvia()`, `viñeta()`, `cieloAmanecer()`— y a los personajes los dibuja `Sprites`, los mismos que se usan jugando, escalados con un `AffineTransform`.
+
+El prólogo tiene 6 planos (~31 s) y cada final 4 (~20 s). Se avanzan con `ESPACIO` o se saltan enteras con `ESC`.
+
+### Los diez sustos (`Jumpscares.java`)
+
+Un susto repetido deja de asustar, así que hay diez y el sistema **nunca repite el mismo dos veces seguidas**. Cada uno tiene su dibujo y su sonido: unos ojos que se abren, unas fauces, la jauría, zarpazos que rasgan la pantalla, tu propio reflejo deformado...
+
+Dos decisiones que los hacen funcionar:
+
+- **Uno de ellos no hace ruido.** El susto `SUSURRO` apaga la pantalla y baja el volumen en vez de dar un golpe. Cuando el jugador ya se ha acostumbrado a que el susto sea un estruendo, que un día no lo sea desconcierta más.
+- **El de Colmillo no puede salir antes del barrio 4.** Ver la cara del jefe final antes de conocerle no da miedo, revienta la sorpresa.
+
+### El susto en tres tiempos
+
+Un susto que aparece de golpe sorprende una vez. Uno que **avisa** asusta cada vez, porque el miedo se construye en la espera. Aquí es una máquina de tres estados:
+
+| Fase | Dura | Qué pasa |
+|---|---|---|
+| **Aviso** | 80 fotogramas | La música se corta (`AudioEngine.duckMusic`), la luz se cierra, una silueta se perfila y se oyen pasos por un lado concreto |
+| **Golpe** | 42 fotogramas | El perro crece hacia la cámara, rugido, temblor y vibración |
+| **Resaca** | 55 fotogramas | Pantalla apagada, la imagen quemada en la retina, pitido en los oídos y el latido en los bordes |
+
+El corte de música es la pieza clave: el silencio repentino avisa al cuerpo de que algo va a pasar.
 
 ### La cámara
 
@@ -94,16 +159,34 @@ if (dy != 0 && !blocked(playerX, playerY + dy, PLAYER_SIZE)) playerY += dy;
 
 Gracias a eso, si Nox camina en diagonal contra una pared **se desliza a lo largo de ella** en vez de quedarse trabado. Si se comprobaran los dos ejes juntos, cualquier roce lo detendría en seco.
 
+### La caja de colisión no es el dibujo
+
+Un detalle que parece menor y era el causante de que **los jefes se quedaran atorados**: un jefe se dibuja de 78 píxeles, pero un pasillo mide 60. Con la caja de colisión del tamaño del dibujo, el jefe **no cabía físicamente** por ningún paso estrecho y se quedaba encajado contra la pared.
+
+La solución es la habitual en videojuegos: **separar lo que se ve de lo que choca**. Cada perro tiene un `collisionSize` como máximo de 44 píxeles, centrado dentro de su dibujo:
+
+```java
+private boolean enemyBlocked(Enemy en, double nx, double ny) {
+    double inset = (en.size - en.collisionSize) / 2.0;
+    return blocked(nx + inset, ny + inset, en.collisionSize);
+}
+```
+
+El jefe se sigue viendo enorme y su alcance de golpe sigue usando el tamaño visible; lo único que se encoge es la caja con la que roza las paredes.
+
 ### Inteligencia de los perros
 
-Es intencionadamente sencilla, pero con un detalle que la salva:
+Hay **dos niveles**, según lo que importe cada enemigo:
 
-1. Si el jugador está dentro del rango de detección, el perro avanza hacia él eje por eje.
-2. Si **no consigue moverse en ninguno de los dos ejes** (está pegado a una esquina), activa un `detourTimer`: durante 32 fotogramas camina **perpendicular** al jugador, lo que le hace rodear el obstáculo.
+**Los pandilleros normales** usan un método barato: avanzan hacia el jugador eje por eje y, si no consiguen moverse en ninguno de los dos (están pegados a una esquina), activan un `detourTimer` y caminan **perpendicular** al jugador durante 45 fotogramas para rodear el obstáculo. Si por ese lado tampoco salen, prueban por el contrario.
 
-Sin ese segundo paso los perros se quedaban pegados a los edificios empujando contra la pared, y se notaba muchísimo.
+**Los jefes usan búsqueda de ruta de verdad**: una **búsqueda en anchura (BFS)** sobre la rejilla del mapa que devuelve la siguiente casilla del camino más corto hasta Nox, recalculada cada 14 fotogramas.
 
-Los jefes añaden dos comportamientos con temporizador propio: una **embestida** (velocidad ×2,6 durante 55 fotogramas) y una **ráfaga circular** de 12 balas cada 4 segundos.
+¿Por qué esta diferencia? Porque el método barato funciona en calle abierta pero **no sabe salir de un laberinto**. Entre las filas de contenedores del puerto, el jefe recorría 4.900 píxeles dando vueltas para avanzar solo 280 y no llegaba nunca. Y como hay que derrotar al jefe para abrir la salida del barrio, eso dejaba el nivel bloqueado. Con BFS los seis jefes alcanzan al jugador.
+
+Un pandillero normal que se quede trabado más de 18 fotogramas también pide una ruta, pero hay un **presupuesto de 4 cálculos por fotograma** para que 90 perros a la vez no hundan el rendimiento. Medido en el barrio 6 en dificultad PESADILLA con 76 enemigos: **6,5 ms por fotograma** contando lógica y dibujo, sobre los 16,7 ms disponibles para ir a 60 fps.
+
+Los jefes añaden además dos comportamientos con temporizador propio: una **embestida** (velocidad ×2,6 durante 55 fotogramas, que se cancela si choca contra un muro) y una **ráfaga circular** de 12 balas cada 4 segundos.
 
 ### Los dos finales
 
@@ -130,9 +213,9 @@ Genera el mapa de cada barrio. **Cada barrio tiene su propio algoritmo**, no es 
 | 5 Azoteas | Se parte de **vacío** y se colocan tejados rectangulares, unidos por **tablones** de una casilla |
 | 6 Mansión | **Salones** rectangulares que no se solapan, unidos por pasillos en L con alfombra |
 
-### El problema de los mapas aleatorios (y cómo se resuelve)
+### El problema de los mapas aleatorios
 
-Generar un mapa al azar tiene un peligro grave: **puede salir un mapa imposible de terminar**, con la salida encerrada detrás de un muro. El juego se protege con dos pasos:
+Generar un mapa al azar tiene un peligro grave: **puede salir un mapa imposible de terminar**. El juego se protege con tres pasos, y los tres fueron necesarios de verdad:
 
 **Paso 1 — Camino garantizado.** Después de generar el terreno se excava a la fuerza un pasillo de la entrada al centro y del centro a la salida:
 
@@ -143,9 +226,13 @@ carve(m, rand, w/2, h/2, w-3, h-3, w, h);
 
 **Paso 2 — Conectar zonas aisladas.** Se recorre el mapa con un **algoritmo de inundación (flood fill)** partiendo de donde aparece Nox. Toda zona de suelo que quede sin marcar y tenga más de 8 casillas está incomunicada, así que se le excava un pasillo hasta la zona principal más cercana.
 
-Este segundo paso no era un lujo: sin él, el Basurero dejaba **el 43% del mapa inaccesible** detrás de las montañas de basura. Con él sube al 99-100%.
+Sin este paso, el Basurero dejaba **el 43% del mapa inaccesible** detrás de las montañas de basura. Con él sube al 98-100%.
 
-`SmokeTest.java` verifica esto automáticamente generando **30 mapas aleatorios** y comprobando en todos que se pueda llegar caminando a la salida, al jefe y a la tienda.
+**Paso 3 — Colocar los objetos solo donde se llega.** El jefe, las tiendas y los enemigos **no se ponen en posiciones fijas**: se calcula primero qué casillas son accesibles y se eligen únicamente entre esas. El jefe se planta en la casilla accesible **más lejana** a la entrada, así que custodia el fondo del barrio y siempre se puede llegar a él.
+
+Este tercer paso apareció por un fallo real: en la mansión el jefe se colocaba en una posición fija que a veces caía **dentro de un muro**. Como la salida exige derrotar al jefe, ese barrio quedaba imposible de terminar. Además, al colocar una tienda se comprueba que no tape el único paso hacia la salida; si lo tapa, se retira.
+
+`SmokeTest.java` verifica todo esto generando **150 mapas aleatorios** y comprobando en cada uno que se pueda llegar caminando a la salida, al jefe y a la tienda.
 
 ### Tipos de casilla (`Tiles.java`)
 
@@ -253,7 +340,7 @@ El sonido digital es una lista de números que representan la posición del alta
 
 Un hilo aparte (`mixLoop`) rellena continuamente un búfer de 1024 muestras:
 
-```java
+```
 1. Pide una muestra de música
 2. Suma las muestras de todos los efectos que estén sonando
 3. Recorta el resultado para que no sature
@@ -296,11 +383,93 @@ Cada barrio tiene su nota raíz y su patrón (la mansión usa la segunda menor, 
 
 Un detalle técnico: las frecuencias se acumulan en un **acumulador de fase** en vez de recalcular el seno desde cero. Si no, al cambiar de nota habría un salto brusco en la onda y se oiría un "clic".
 
+### Sonido posicional
+
+El mezclador trabaja en **estéreo**: calcula por separado el canal izquierdo y el derecho. Eso permite que un sonido que ocurre en el mundo se oiga por el lado por el que viene y más flojo cuanto más lejos esté:
+
+```java
+double pan = dx / 420.0;                    // a qué lado queda
+double falloff = 1 - dist / HEARING_RANGE;  // cuánto se ha apagado
+falloff *= falloff;                          // la caída no es lineal
+```
+
+Para repartirlo entre los dos canales se usa **panoramización de potencia constante**: en vez de multiplicar por `(1-p)` y `p`, se usan el seno y el coseno de un ángulo. Con el método ingenuo, un sonido centrado suena más flojo que uno del todo a un lado; con seno y coseno el volumen percibido se mantiene igual mientras se desplaza.
+
+En un juego de terror esto no es un adorno: saber que el gruñido viene de tu espalda izquierda es información de juego.
+
 Si la computadora no tiene tarjeta de sonido, el motor lo detecta, avisa por consola y **el juego sigue funcionando en silencio**.
 
 ---
 
-## 7. Motor de guardado (`SaveManager.java`)
+## 7. Soporte de mando de Xbox (`Gamepad.java`)
+
+Java **no tiene** ninguna API estándar para mandos. La solución habitual es una librería externa con archivos `.dll` propios, lo que rompería la idea de que el proyecto funcione copiándolo sin más.
+
+Aquí se usa otro camino: desde **Java 22** existe la API **Foreign Function and Memory** (`java.lang.foreign`), que permite llamar a funciones de una DLL del sistema **desde Java puro**. Así se llama directamente a **XInput**, la API de mandos de Windows, sin librerías externas ni una sola línea de código nativo.
+
+### Cómo se enlaza
+
+```java
+Linker linker = Linker.nativeLinker();
+SymbolLookup lookup = SymbolLookup.libraryLookup("xinput1_4.dll", arena);
+MemorySegment addr = lookup.find("XInputGetState").orElseThrow();
+
+getState = linker.downcallHandle(addr, FunctionDescriptor.of(
+    ValueLayout.JAVA_INT,      // devuelve DWORD
+    ValueLayout.JAVA_INT,      // indice del mando (0 a 3)
+    ValueLayout.ADDRESS));     // puntero a XINPUT_STATE
+```
+
+Se prueban tres nombres de DLL (`xinput1_4`, `xinput1_3`, `xinput9_1_0`) porque cambian según la versión de Windows.
+
+### Cómo se leen los datos
+
+XInput rellena una estructura de 16 bytes. En Java se reserva ese bloque de memoria y se leen los campos por su posición:
+
+| Posición | Campo | Qué es |
+|---|---|---|
+| 0 | `dwPacketNumber` | Contador de cambios |
+| 4 | `wButtons` | Los 14 botones, uno por bit |
+| 6 / 7 | Gatillos | 0 a 255 cada uno |
+| 8, 10 | Stick izquierdo | −32768 a 32767 |
+| 12, 14 | Stick derecho | −32768 a 32767 |
+
+```java
+buttons = stateBuffer.get(ValueLayout.JAVA_SHORT, 4) & 0xFFFF;
+short rawX = stateBuffer.get(ValueLayout.JAVA_SHORT, 8);
+```
+
+Los botones vienen **empaquetados en bits**: la A es `0x1000`, la B `0x2000`. Para saber si uno está pulsado se hace una operación AND: `(buttons & A) != 0`.
+
+### Dos detalles que hacen que se sienta bien
+
+**Zona muerta.** Los sticks nunca marcan cero exacto: aunque no los toques devuelven valores pequeños. Sin corregirlo, Nox se movería solo. Se descarta todo lo que quede por debajo de 7849 (el valor que recomienda Microsoft) y el resto se reescala a 0-1, para que no haya un salto brusco al salir de la zona muerta.
+
+**Flanco de pulsación.** Para acciones como pausar hace falta distinguir "el botón está pulsado" de "el botón se acaba de pulsar". Se guardan los botones del fotograma anterior y se comparan:
+
+```java
+public static boolean pressed(int button) {
+    return (buttons & button) != 0 && (previousButtons & button) == 0;
+}
+```
+
+Sin esto, pulsar START una vez alternaría la pausa 60 veces por segundo.
+
+### Vibración
+
+`XInputSetState` recibe una estructura de 4 bytes con la velocidad de los dos motores. El motor grande da golpes sordos y el pequeño, detalles finos. El juego vibra al recibir daño (con fuerza proporcional al golpe), en las explosiones, al aparecer un jefe y en los sustos.
+
+### Si algo falla
+
+Todo el módulo está envuelto en `catch (Throwable)`, no solo `catch (Exception)`. Es importante: en Java 17 la clase `java.lang.foreign` no existe y se produce un `NoClassDefFoundError`, que es un `Error` y **no** un `Exception`. Al capturar `Throwable` el juego arranca igual y se juega con teclado.
+
+Por eso el juego funciona en cualquier caso: sin mando, sin Windows o con Java antiguo.
+
+> **Nota:** al ser una llamada a código nativo, Java muestra un aviso salvo que se arranque con `--enable-native-access=ALL-UNNAMED`. Los lanzadores del proyecto ya incluyen esa opción.
+
+---
+
+## 8. Motor de guardado (`SaveManager.java`)
 
 Tiene dos niveles:
 
@@ -324,7 +493,7 @@ Así, si el servidor está apagado, el juego **no se congela ni un fotograma**: 
 
 ---
 
-## 8. El servidor (`server.py`)
+## 9. El servidor (`server.py`)
 
 Es la única parte que no está en Java, y es **totalmente opcional**. Usa **FastAPI**.
 
@@ -341,22 +510,28 @@ Guarda todo en `server_data.json`, así que no se pierde al reiniciarlo. **Pydan
 
 ---
 
-## 9. Qué hace cada archivo
+## 10. Qué hace cada archivo
 
 ### Código Java (el juego)
 
 | Archivo | Líneas aprox. | Responsabilidad |
 |---|---|---|
-| `ProjectExodusAdvanced.java` | 250 | Crea la ventana, aplica el tema oscuro, cambia entre menú y juego con `CardLayout`. Contiene el `main`. También el menú principal con su lluvia animada. |
-| `LabyrinthPanel.java` | 1.500 | El motor de juego: bucle, cámara, colisiones, enemigos, armas, tienda, HUD y todas las pantallas. |
-| `MapGenerator.java` | 340 | Genera el terreno de los 6 barrios y garantiza que se puedan terminar. |
+| `ProjectExodusAdvanced.java` | 400 | Crea la ventana, aplica el tema oscuro, cambia entre menú y juego con `CardLayout`. Contiene el `main`. También el menú principal, con su lluvia animada y su navegación con mando. |
+| `LabyrinthPanel.java` | 1.700 | El motor de juego: bucle, cámara, colisiones, enemigos, armas, tienda, HUD y todas las pantallas. |
+| `MapGenerator.java` | 380 | Genera el terreno de los 6 barrios y garantiza que se puedan terminar. |
 | `Sprites.java` | 900 | Dibuja todo: materiales cacheados, Nox, los perros, monedas, tienda, salida y luces. |
 | `Particles.java` | 260 | Chispas, humo, brasas, explosiones y números flotantes. |
-| `Tiles.java` | 35 | Constantes de los tipos de casilla y si bloquean el paso. |
+| `Tiles.java` | 45 | Constantes de los tipos de casilla y si bloquean el paso. |
 | `LevelInfo.java` | 80 | Datos de los 6 barrios: nombre, jefe, raza, frase, paleta de colores. |
-| `AudioEngine.java` | 430 | Sintetiza música y efectos, y los mezcla en tiempo real. |
-| `SaveManager.java` | 230 | Guardado local y sincronización opcional con el servidor. |
-| `SmokeTest.java` | 290 | Prueba automática: simula miles de fotogramas y verifica que los mapas se puedan terminar. |
+| `Memories.java` | 90 | Los 18 recuerdos que cuentan las fotos escondidas. |
+| `Cinematics.java` | 640 | Prólogo y los dos finales: escenas dibujadas con fundidos y texto. |
+| `Jumpscares.java` | 420 | Los diez sustos, cada uno con su dibujo y su sonido. |
+| `AudioEngine.java` | 520 | Sintetiza música y efectos, y los mezcla en estéreo en tiempo real. |
+| `Gamepad.java` | 270 | Lee el mando de Xbox llamando a XInput desde Java puro. |
+| `Achievements.java` | 220 | Los 25 logros: definiciones, guardado y aviso en pantalla. |
+| `Settings.java` | 80 | Opciones del jugador, incluidas las de accesibilidad. |
+| `SaveManager.java` | 260 | Guardado local y sincronización opcional con el servidor. |
+| `SmokeTest.java` | 640 | Prueba automática: simula miles de fotogramas y verifica que los mapas se puedan terminar. |
 
 ### Otros archivos
 
@@ -374,7 +549,7 @@ Guarda todo en `server_data.json`, así que no se pierde al reiniciarlo. **Pydan
 
 ---
 
-## 10. Librerías utilizadas
+## 11. Librerías utilizadas
 
 ### Externa (una sola)
 
@@ -382,7 +557,7 @@ Guarda todo en `server_data.json`, así que no se pierde al reiniciarlo. **Pydan
 |---|---|---|---|
 | **FlatLaf** | 3.4.1 | Tema oscuro moderno para los botones y ventanas de Swing. Sin ella el juego se vería con el aspecto gris de Java de los años 90. | Apache 2.0 (gratis, uso libre) |
 
-Es la **única** dependencia externa del juego, y viene incluida en el repositorio como `flatlaf-3.4.1.jar`.
+Es la **única** dependencia externa del juego, y viene incluida en el repositorio como `flatlaf-3.4.1.jar`. Ni siquiera el soporte de mando necesita una librería aparte.
 
 ### Del propio Java (no hay que instalar nada)
 
@@ -392,6 +567,7 @@ Es la **única** dependencia externa del juego, y viene incluida en el repositor
 | `java.awt` / `java.awt.geom` | `Graphics2D`, colores, fuentes, degradados, curvas |
 | `java.awt.image` | `BufferedImage` para la caché de casillas |
 | `javax.sound.sampled` | Salida de audio en crudo (`SourceDataLine`) |
+| `java.lang.foreign` | Llamar a XInput para el mando de Xbox (Java 22+) |
 | `java.util` | Listas, mapas, `Random`, `Properties` |
 | `java.io` / `java.net` | Guardado en archivo y peticiones HTTP al servidor |
 | `javax.imageio` | Solo en las herramientas de captura de pantalla |
@@ -408,18 +584,18 @@ Se instalan con: `pip install fastapi uvicorn`
 
 ---
 
-## 11. Reparto de lenguajes
+## 12. Reparto de lenguajes
 
 | Lenguaje | Líneas aprox. | Porcentaje |
 |---|---|---|
-| **Java** | ~4.300 | **~97%** |
-| Python | ~170 | ~3% |
+| **Java** | ~4.600 | **~97%** |
+| Python | ~180 | ~3% |
 
-El proyecto cumple de sobra la regla de que al menos el 60% sea Java. Ese porcentaje no es casualidad: elegir gráficos dibujados con Java 2D y audio sintetizado con `javax.sound.sampled`, en lugar de librerías externas o archivos de recursos, mantiene todo el peso del proyecto en Java.
+El proyecto cumple de sobra la regla de que al menos el 60% sea Java. Ese porcentaje no es casualidad: elegir gráficos dibujados con Java 2D, audio sintetizado con `javax.sound.sampled` y el mando leído con `java.lang.foreign`, en lugar de librerías externas o archivos de recursos, mantiene todo el peso del proyecto en Java.
 
 ---
 
-## 12. Preguntas que te pueden hacer
+## 13. Preguntas que te pueden hacer
 
 **¿Por qué Swing y no un motor de videojuegos?**
 Porque es un proyecto de Java y la idea es demostrar programación propia. Un motor haría el 90% del trabajo (bucle, colisiones, dibujo, audio) y aquí todo eso está escrito a mano.
@@ -430,11 +606,17 @@ Con un `Timer` de Swing a 16 ms. Para que dé tiempo a dibujar todo en ese marge
 **¿De dónde salen los sonidos?**
 De fórmulas matemáticas. No hay archivos de audio: cada efecto es una onda calculada muestra a muestra.
 
+**¿Cómo funciona el mando si Java no soporta mandos?**
+Con la API Foreign Function and Memory de Java 22, que permite llamar a `XInputGetState` de Windows directamente desde Java, sin librerías externas.
+
 **¿Qué pasa si el mapa aleatorio sale sin salida?**
-No puede pasar: se excava un camino garantizado y después un *flood fill* conecta cualquier zona aislada. La prueba automática lo verifica en 30 mapas.
+No puede pasar: se excava un camino garantizado, un *flood fill* conecta las zonas aisladas y el jefe se coloca solo sobre casillas comprobadamente accesibles. La prueba automática lo verifica en 150 mapas.
 
 **¿Qué pasa si no hay internet o el servidor está apagado?**
 Nada. El guardado local es el que manda; la sincronización va en un hilo aparte con 900 ms de espera máxima y el juego ni se entera.
+
+**¿Cómo persiguen los enemigos al jugador?**
+Los pandilleros normales van en línea recta y rodean los obstáculos caminando de lado. Los jefes usan una búsqueda en anchura sobre la rejilla del mapa, porque el método simple no sabe salir de un laberinto y el jefe tiene que poder llegar siempre.
 
 **¿Cuál es la parte más difícil del código?**
 El motor de audio, porque hay que entender cómo se representa el sonido digitalmente y cuidar detalles como el acumulador de fase para que no se oigan clics al cambiar de nota.

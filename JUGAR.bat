@@ -22,10 +22,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM --enable-native-access permite leer el mando de Xbox sin mensajes de aviso.
+REM En versiones de Java anteriores a la 24 la opcion se ignora sin causar problemas.
+
 REM Si ya existe el jar creado, se usa directamente
 if exist "Exodo.jar" (
     echo   Iniciando...
-    java -jar "Exodo.jar"
+    java --enable-native-access=ALL-UNNAMED -jar "Exodo.jar"
     exit /b 0
 )
 
@@ -42,4 +45,4 @@ if not exist "*.class" (
 )
 
 echo   Iniciando...
-java -cp ".;flatlaf-3.4.1.jar" ProjectExodusAdvanced
+java --enable-native-access=ALL-UNNAMED -cp ".;flatlaf-3.4.1.jar" ProjectExodusAdvanced

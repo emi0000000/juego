@@ -141,9 +141,30 @@ Si todo salió bien, se abre la ventana **"ÉXODO: LA VENGANZA DE NOX"** con el 
 | `F` | Silbato ultrasónico: aturde a los perros cercanos |
 | `E` | Abrir el Mercado Negro (estando junto a la tienda rosa) |
 | `M` | Mostrar u ocultar el mapa del barrio |
+| `F11` | Pantalla completa (funciona en cualquier momento) |
 | `P` o `ESC` | Pausa (desde ahí se sale al menú y se activa/desactiva el sonido) |
 
 En el menú de pausa: `N` activa o desactiva la música, `B` los efectos de sonido.
+
+### Con mando de Xbox
+
+El juego detecta el mando solo. Conéctalo por cable o por Bluetooth (antes o durante la partida, da igual) y en el menú aparecerá **MANDO CONECTADO**.
+
+| Botón | Acción |
+|---|---|
+| Stick izquierdo o cruceta | Mover a Nox (el stick es analógico: puedes caminar despacio) |
+| **A** | Atacar / aceptar |
+| **Gatillo derecho (RT)** | Atacar |
+| **X** | Comer lata de atún |
+| **Y** | Silbato ultrasónico |
+| **B** | Abrir el Mercado Negro / cerrar / volver |
+| **LB** y **RB** | Cambiar de arma |
+| **BACK / VIEW** (o clic del stick derecho) | Ver el mapa del barrio |
+| **START / MENU** | Pausa |
+
+El mando **vibra** al recibir daño, en las explosiones, cuando aparece un jefe y en los sustos.
+
+> El soporte de mando necesita **Java 22 o superior**. Con una versión anterior el juego funciona igual, solo que con teclado. El ejecutable de la carpeta `ejecutable\` ya lleva la versión correcta, así que ahí siempre funciona.
 
 > ⚠️ **Vigila la barra de CORDURA.** Si llegas al jefe final con menos del 45%, verás el **final oscuro** en vez del bueno. El Amuleto de Cordura del Mercado Negro la sube 40 puntos.
 

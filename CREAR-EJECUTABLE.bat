@@ -19,8 +19,12 @@ if errorlevel 1 goto sinjdk
 echo   [1/4] Compilando el codigo fuente...
 if exist "build" rmdir /s /q "build"
 mkdir "build\clases"
-javac -encoding UTF-8 -cp "flatlaf-3.4.1.jar" -d "build\clases" ProjectExodusAdvanced.java LabyrinthPanel.java MapGenerator.java Sprites.java Particles.java Tiles.java AudioEngine.java SaveManager.java LevelInfo.java
+REM Se compila todo el .java de la carpeta: asi no hay que tocar este script
+REM cada vez que se anade un archivo nuevo al proyecto.
+javac -encoding UTF-8 -cp "flatlaf-3.4.1.jar" -d "build\clases" *.java
 if errorlevel 1 goto error
+REM La prueba automatica no forma parte del juego
+if exist "build\clases\SmokeTest.class" del /q "build\clases\SmokeTest*.class"
 
 echo   [2/4] Integrando la libreria FlatLaf...
 mkdir "build\flat"
@@ -42,7 +46,7 @@ if errorlevel 1 goto sinjpackage
 mkdir "build\dist"
 copy /y "Exodo.jar" "build\dist\Exodo.jar" >nul
 if exist "ejecutable" rmdir /s /q "ejecutable"
-jpackage --type app-image --name "Exodo" --input "build\dist" --main-jar Exodo.jar --main-class ProjectExodusAdvanced --dest "build\app" --add-modules java.base,java.desktop,java.logging --java-options "-Xmx512m" --app-version 1.0 --description "EXODO LA VENGANZA DE NOX"
+jpackage --type app-image --name "Exodo" --input "build\dist" --main-jar Exodo.jar --main-class ProjectExodusAdvanced --dest "build\app" --add-modules java.base,java.desktop,java.logging --java-options "-Xmx512m" --java-options "--enable-native-access=ALL-UNNAMED" --app-version 1.0 --description "EXODO LA VENGANZA DE NOX"
 if errorlevel 1 goto error
 move "build\app\Exodo" "ejecutable" >nul
 goto fin

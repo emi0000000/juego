@@ -19,8 +19,17 @@ import java.util.Random;
 public final class AudioEngine {
 
     private static final float SR = 44100f;
-    private static final AudioFormat FORMAT = new AudioFormat(SR, 16, 1, true, false);
+
+    /**
+     * Dos canales: hace falta estéreo para que un gruñido a la izquierda se oiga
+     * a la izquierda. La música va centrada y los efectos se colocan según dónde
+     * ocurren respecto a Nox.
+     */
+    private static final AudioFormat FORMAT = new AudioFormat(SR, 16, 2, true, false);
     private static final int BUFFER = 1024;
+
+    /** A partir de esta distancia en píxeles, un sonido del mundo ya no se oye. */
+    private static final double HEARING_RANGE = 780;
 
     private static final Map<String, float[]> SFX = new HashMap<>();
     private static final List<ActiveSfx> PLAYING = new ArrayList<>();
@@ -66,6 +75,7 @@ public final class AudioEngine {
         audioThread.start();
     }
 
+    /** Para el hilo de mezcla y suelta la tarjeta de sonido. */
     public static void shutdown() {
         running = false;
         if (line != null) {
@@ -82,9 +92,26 @@ public final class AudioEngine {
 
     public static boolean isSfxOn() { return sfxOn; }
 
-    public static void toggleMusic() { musicOn = !musicOn; }
+    public static void toggleMusic() { musicOn = !musicOn; Settings.save(); }
 
-    public static void toggleSfx() { sfxOn = !sfxOn; }
+    public static void toggleSfx() { sfxOn = !sfxOn; Settings.save(); }
+
+    public static void setMusicOn(boolean on) { musicOn = on; }
+
+    public static void setSfxOn(boolean on) { sfxOn = on; }
+
+    /**
+     * Corta la música durante un rato.
+     *
+     * Se usa justo antes de un susto: el silencio repentino avisa al cuerpo de que
+     * algo va a pasar, y el golpe posterior asusta mucho más que si sonara encima
+     * de la música de siempre.
+     */
+    public static void duckMusic(double seconds) {
+        musicDuckSamples = Math.max(musicDuckSamples, (int) (seconds * SR));
+    }
+
+    private static volatile int musicDuckSamples = 0;
 
     public static void setMusicMode(int mode) {
         if (musicMode != mode) {
@@ -101,23 +128,60 @@ public final class AudioEngine {
     // Reproducción de efectos
     // ------------------------------------------------------------------
 
-    public static void play(String name) { play(name, 1.0); }
+    public static void play(String name) { play(name, 1.0, 0.0); }
 
-    public static void play(String name, double gain) {
+    public static void play(String name, double gain) { play(name, gain, 0.0); }
+
+    /**
+     * @param pan -1 todo a la izquierda, 0 centrado, 1 todo a la derecha
+     */
+    public static void play(String name, double gain, double pan) {
         if (!available || !sfxOn) return;
         float[] data = SFX.get(name);
         if (data == null) return;
         synchronized (PLAYING) {
             if (PLAYING.size() > 24) PLAYING.remove(0);
-            PLAYING.add(new ActiveSfx(data, gain));
+            PLAYING.add(new ActiveSfx(data, gain, pan));
         }
+    }
+
+    /**
+     * Reproduce un sonido que ocurre en un punto del mundo: se oye más flojo cuanto
+     * más lejos esté de Nox y se desplaza al lado por el que viene.
+     *
+     * En un juego de terror esto importa: saber que el gruñido viene de tu espalda
+     * izquierda es información de juego, no un adorno.
+     */
+    public static void playAt(String name, double gain,
+                              double sourceX, double sourceY,
+                              double listenerX, double listenerY) {
+        double dx = sourceX - listenerX;
+        double dy = sourceY - listenerY;
+        double dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > HEARING_RANGE) return;
+
+        // Caída suave: fuerte de cerca, se apaga al llegar al límite
+        double falloff = 1 - dist / HEARING_RANGE;
+        falloff *= falloff;
+
+        double pan = Math.max(-1, Math.min(1, dx / 420.0));
+        play(name, gain * falloff, pan);
     }
 
     private static final class ActiveSfx {
         final float[] data;
-        final double gain;
+        final double gainLeft, gainRight;
         int pos = 0;
-        ActiveSfx(float[] data, double gain) { this.data = data; this.gain = gain; }
+
+        ActiveSfx(float[] data, double gain, double pan) {
+            this.data = data;
+            double p = Math.max(-1, Math.min(1, pan));
+            // Ley de panoramización de potencia constante: al moverse de un lado a
+            // otro el volumen percibido no sube ni baja.
+            double angle = (p + 1) * Math.PI / 4;
+            this.gainLeft = gain * Math.cos(angle);
+            this.gainRight = gain * Math.sin(angle);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -125,31 +189,45 @@ public final class AudioEngine {
     // ------------------------------------------------------------------
 
     private static void mixLoop() {
-        byte[] out = new byte[BUFFER * 2];
-        float[] mix = new float[BUFFER];
-        while (running) {
-            Arrays.fill(mix, 0f);
+        byte[] out = new byte[BUFFER * 4];        // 2 canales x 2 bytes por muestra
+        float[] left = new float[BUFFER];
+        float[] right = new float[BUFFER];
 
-            for (int i = 0; i < BUFFER; i++) mix[i] = (float) nextMusicSample();
+        while (running) {
+            Arrays.fill(left, 0f);
+            Arrays.fill(right, 0f);
+
+            // La música va centrada: suena igual por los dos altavoces
+            for (int i = 0; i < BUFFER; i++) {
+                float m = (float) nextMusicSample();
+                if (musicDuckSamples > 0) {
+                    musicDuckSamples--;
+                    // Se apaga y se recupera de forma gradual, no de golpe
+                    double fade = Math.min(1.0, musicDuckSamples / (SR * 0.35));
+                    m *= (float) (1 - fade);
+                }
+                left[i] = m;
+                right[i] = m;
+            }
 
             synchronized (PLAYING) {
                 Iterator<ActiveSfx> it = PLAYING.iterator();
                 while (it.hasNext()) {
                     ActiveSfx a = it.next();
                     int n = Math.min(BUFFER, a.data.length - a.pos);
-                    for (int i = 0; i < n; i++) mix[i] += (float) (a.data[a.pos + i] * a.gain);
+                    for (int i = 0; i < n; i++) {
+                        float s = a.data[a.pos + i];
+                        left[i] += (float) (s * a.gainLeft);
+                        right[i] += (float) (s * a.gainRight);
+                    }
                     a.pos += n;
                     if (a.pos >= a.data.length) it.remove();
                 }
             }
 
             for (int i = 0; i < BUFFER; i++) {
-                double s = mix[i] * masterVolume;
-                if (s > 1) s = 1;
-                if (s < -1) s = -1;
-                short v = (short) (s * 32000);
-                out[i * 2] = (byte) (v & 0xFF);
-                out[i * 2 + 1] = (byte) ((v >> 8) & 0xFF);
+                writeSample(out, i * 4, left[i]);
+                writeSample(out, i * 4 + 2, right[i]);
             }
 
             try {
@@ -158,6 +236,15 @@ public final class AudioEngine {
                 running = false;
             }
         }
+    }
+
+    private static void writeSample(byte[] out, int offset, float value) {
+        double s = value * masterVolume;
+        if (s > 1) s = 1;
+        if (s < -1) s = -1;
+        short v = (short) (s * 32000);
+        out[offset] = (byte) (v & 0xFF);
+        out[offset + 1] = (byte) ((v >> 8) & 0xFF);
     }
 
     // ------------------------------------------------------------------
@@ -197,6 +284,13 @@ public final class AudioEngine {
         return root * Math.pow(2, semis / 12.0) * Math.pow(2, octave);
     }
 
+    /**
+     * Calcula la siguiente muestra de música sumando cuatro capas: el drone grave,
+     * el arpegio de la escala menor, el pad con vibrato y el latido del corazón.
+     *
+     * Las frecuencias se acumulan en un acumulador de fase en vez de recalcular el
+     * seno desde cero: si no, al cambiar de nota la onda daría un salto y se oiría un clic.
+     */
     private static double nextMusicSample() {
         musicPos++;
         if (!musicOn) return 0;
@@ -265,6 +359,10 @@ public final class AudioEngine {
 
     private interface Voice { double at(double t); }
 
+    /**
+     * Convierte una fórmula en un efecto de sonido: evalúa la función para cada
+     * muestra y devuelve el resultado ya listo para reproducir.
+     */
     private static float[] render(double seconds, Voice v) {
         int n = (int) (SR * seconds);
         float[] out = new float[n];
@@ -305,6 +403,13 @@ public final class AudioEngine {
         return out;
     }
 
+    /**
+     * Fabrica los 42 efectos de sonido del juego, cada uno con su fórmula.
+     *
+     * Las piezas que se combinan son siempre las mismas: senos para tonos limpios,
+     * sierra y cuadrada para lo áspero, ruido para explosiones y roces, y una
+     * envolvente exponencial que decide cómo aparece y se apaga cada sonido.
+     */
     private static void buildSfxBank() {
         if (!SFX.isEmpty()) return;
 
@@ -443,6 +548,129 @@ public final class AudioEngine {
 
         // Lata de atún: Nox se cura
         SFX.put("heal", renderNotes(new double[]{392.00, 523.25, 659.25}, 0.11, 0.20, 0));
+
+        // Logro desbloqueado
+        SFX.put("achievement", renderNotes(new double[]{659.25, 783.99, 1046.50, 1318.51}, 0.10, 0.16, 0));
+
+        // Foto encontrada: acorde suave, casi un suspiro
+        SFX.put("photo", render(0.90, t -> {
+            double e = Math.min(1, t / 0.06) * Math.exp(-t * 2.2);
+            return (Math.sin(2 * Math.PI * 523.25 * t) * 0.4
+                  + Math.sin(2 * Math.PI * 659.25 * t) * 0.3
+                  + Math.sin(2 * Math.PI * 783.99 * t) * 0.2) * e * 0.30;
+        }));
+
+        // Madera partiéndose al romper un bidón o una caja
+        SFX.put("crack", render(0.35, t -> {
+            double e = Math.exp(-t * 13);
+            return (noise() * 0.6 + saw(160 - 90 * t, t) * 0.3) * e * 0.45;
+        }));
+
+        // El jefe se enfurece al llegar a la mitad de su vida
+        SFX.put("enrage", render(1.30, t -> {
+            double f = 70 + 55 * t;
+            double e = Math.min(1, t / 0.08) * Math.min(1, (1.30 - t) / 0.4);
+            return (saw(f, t) * 0.5 + square(f * 1.5, t) * 0.25 + noise() * 0.18) * e * 0.52;
+        }));
+
+        // Rex desaparece en el túnel y reaparece detrás
+        SFX.put("teleport", render(0.55, t -> {
+            double f = 900 - 700 * t;
+            double e = Math.exp(-t * 4.5);
+            return (Math.sin(2 * Math.PI * f * t) * 0.4 + noise() * 0.35 * Math.exp(-t * 9)) * e * 0.42;
+        }));
+
+        // Titán estrella un contenedor contra el muelle
+        SFX.put("slam", render(0.95, t -> {
+            double e = Math.exp(-t * 3.6);
+            return (Math.sin(2 * Math.PI * (60 - 35 * t) * t) * 0.55
+                  + noise() * 0.5 * Math.exp(-t * 8)) * e * 0.60;
+        }));
+
+        // Se apagan las luces de la mansión
+        SFX.put("lightsout", render(1.10, t -> {
+            double f = 420 * Math.exp(-t * 2.4);
+            double e = Math.exp(-t * 1.6);
+            return (Math.sin(2 * Math.PI * f * t) * 0.42 + noise() * 0.12) * e * 0.44;
+        }));
+
+        // --- Sonidos de la cabeza de Nox: sólo existen cuando la cordura falla ---
+
+        // Pasos que se acercan por detrás
+        SFX.put("steps", render(1.40, t -> {
+            double paso = 0;
+            for (int i = 0; i < 4; i++) {
+                double inicio = i * 0.33;
+                if (t < inicio) continue;
+                double dt = t - inicio;
+                double golpe = Math.exp(-dt * 26);
+                paso += (noise() * 0.5 + Math.sin(2 * Math.PI * 95 * dt) * 0.5) * golpe * (0.5 + i * 0.16);
+            }
+            return paso * 0.30;
+        }));
+
+        // Susurro sin palabras
+        SFX.put("whisper", render(1.80, t -> {
+            double e = Math.min(1, t / 0.4) * Math.min(1, (1.80 - t) / 0.6);
+            double modulacion = 0.5 + 0.5 * Math.sin(2 * Math.PI * 3.1 * t + Math.sin(t * 7));
+            return noise() * modulacion * e * 0.16;
+        }));
+
+        // Pitido en los oídos justo después de un susto
+        SFX.put("tinnitus", render(2.40, t -> {
+            double e = Math.exp(-t * 1.15);
+            return (Math.sin(2 * Math.PI * 4200 * t) * 0.5
+                  + Math.sin(2 * Math.PI * 6350 * t) * 0.2) * e * 0.16;
+        }));
+
+        // El aire que se corta justo antes del susto: es el silencio lo que asusta
+        SFX.put("dread", render(1.60, t -> {
+            double f = 40 + 26 * t;
+            double e = Math.min(1, t / 0.5) * Math.min(1, (1.60 - t) / 0.3);
+            return (saw(f, t) * 0.30 + Math.sin(2 * Math.PI * f * 0.5 * t) * 0.25) * e * 0.34;
+        }));
+
+        // El zarpazo del susto en sí
+        SFX.put("lunge", render(1.10, t -> {
+            double e = Math.exp(-t * 2.6);
+            double rugido = saw(150 - 70 * t, t) * 0.45 + square(74 - 30 * t, t) * 0.25;
+            double golpe = noise() * Math.exp(-t * 12) * 0.55;
+            return (rugido + golpe) * e * 0.72;
+        }));
+
+        // Chillido agudo: el susto de los ojos y el del reflejo
+        SFX.put("shriek", render(1.05, t -> {
+            double f = 900 + 1500 * Math.exp(-t * 3) + 220 * Math.sin(2 * Math.PI * 23 * t);
+            double e = Math.min(1, t / 0.02) * Math.exp(-t * 2.6);
+            return (Math.sin(2 * Math.PI * f * t) * 0.42
+                  + saw(f * 0.5, t) * 0.28
+                  + noise() * 0.22) * e * 0.60;
+        }));
+
+        // Tela y metal rasgándose: el susto de las garras
+        SFX.put("rip", render(0.75, t -> {
+            double e = Math.exp(-t * 4.2);
+            double rasgado = noise() * (0.6 + 0.4 * Math.sin(2 * Math.PI * 40 * t));
+            return (rasgado * 0.7 + saw(320 - 180 * t, t) * 0.3) * e * 0.55;
+        }));
+
+        // Una respiración muy cerca de la nuca
+        SFX.put("breath", render(2.00, t -> {
+            double ciclo = Math.sin(2 * Math.PI * 0.75 * t);
+            double aire = noise() * Math.max(0, ciclo) * 0.5;
+            double e = Math.min(1, t / 0.3) * Math.min(1, (2.00 - t) / 0.5);
+            return aire * e * 0.30;
+        }));
+
+        // El callejón quemado: un acorde menor sostenido y el crujido de las brasas
+        SFX.put("home", render(2.20, t -> {
+            double e = Math.min(1, t / 0.35) * Math.min(1, (2.20 - t) / 0.9);
+            double acorde = Math.sin(2 * Math.PI * 220.00 * t) * 0.34
+                          + Math.sin(2 * Math.PI * 261.63 * t) * 0.26
+                          + Math.sin(2 * Math.PI * 329.63 * t) * 0.20;
+            double brasas = noise() * 0.06 * (0.5 + 0.5 * Math.sin(2 * Math.PI * 2.3 * t));
+            return (acorde + brasas) * e * 0.34;
+        }));
 
         SFX.put("rescue", renderNotes(new double[]{523.25, 659.25, 783.99, 1046.50, 1318.51}, 0.16, 0.20, 0));
 
