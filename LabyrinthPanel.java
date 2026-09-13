@@ -2308,15 +2308,19 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
         }
     }
 
-    /** Lluvia, oscuridad alrededor de Nox y destellos. El radio de luz depende de la cordura, de si Colmillo apago las luces y de si hay un susto en marcha. */
-    private void drawWeather(Graphics2D g2d, LevelInfo info, int lightX, int lightY) {
-        g2d.setColor(new Color(180, 200, 220, 95));
-        for (RainDrop r : rainSystem) {
-            g2d.drawLine((int) r.x, (int) r.y, (int) r.x - 3, (int) r.y + 18);
-        }
-
-        Point2D center = new Point2D.Float(lightX, lightY);
-        float radius = (float) (330 + sanity * 1.9);
+    /**
+     * Hasta dónde ve Nox, en píxeles.
+     *
+     * La cordura **no mata**: quedarse a cero no acaba la partida, lo que hace es
+     * dejarle casi ciego. Con la cordura llena ve unos 520 px; a cero, apenas 140,
+     * que son poco más de dos casillas alrededor. La curva no es recta: la vista se
+     * cierra deprisa en el tramo bajo, para que perder cordura se note de verdad.
+     *
+     * Encima se aplican los recortes temporales: cuando Colmillo apaga las luces,
+     * durante el aviso de un susto, y el latido que la hace palpitar con la locura.
+     */
+    private float lightRadius() {
+        float radius = (float) (140 + 380 * Math.pow(Math.max(0, sanity) / 100.0, 1.35));
 
         // Colmillo corta la luz de la mansión: se ve mucho menos durante unos segundos
         if (lightsOutTimer > 0) {
@@ -2337,8 +2341,22 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
             radius *= (float) (1 - locura * 0.10 * (0.5 + 0.5 * latido));
         }
 
+        // Nunca del todo a cero: siempre queda un resquicio para poder moverse
+        return Math.max(60f, radius);
+    }
+
+    /** Lluvia, oscuridad alrededor de Nox y destellos. El radio de luz depende de la cordura, de si Colmillo apago las luces y de si hay un susto en marcha. */
+    private void drawWeather(Graphics2D g2d, LevelInfo info, int lightX, int lightY) {
+        g2d.setColor(new Color(180, 200, 220, 95));
+        for (RainDrop r : rainSystem) {
+            g2d.drawLine((int) r.x, (int) r.y, (int) r.x - 3, (int) r.y + 18);
+        }
+
+        Point2D center = new Point2D.Float(lightX, lightY);
+        float radius = lightRadius();
+
         try {
-            g2d.setPaint(new RadialGradientPaint(center, Math.max(60f, radius),
+            g2d.setPaint(new RadialGradientPaint(center, radius,
                 new float[]{0f, 0.45f, 1f},
                 new Color[]{new Color(0, 0, 0, 0), info.fog1, info.fog2}));
             g2d.fillRect(0, 0, VIEW_W, VIEW_H);

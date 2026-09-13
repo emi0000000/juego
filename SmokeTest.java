@@ -778,6 +778,69 @@ public class SmokeTest {
         set("gameWon", false);
     }
 
+    /**
+     * La cordura a cero NO mata: lo que hace es dejar a Nox casi ciego.
+     *
+     * Es una regla de diseno: si quedarse sin cordura acabara la partida, el jugador
+     * dejaria de explorar en cuanto la barra bajara, y la cordura pasaria de ser
+     * atmosfera a ser un segundo contador de vida.
+     */
+    static void comprobarCorduraCeroNoMata(ActionEvent tick, Graphics2D g) throws Exception {
+        set("currentLevel", 2);
+        call("loadLevel");
+        set("levelIntroActive", false);
+        set("isDead", false);
+        set("gameWon", false);
+        set("playerHealth", 100);
+        set("homeSeen", true);
+
+        // Lejos de los perros, para que solo influya la cordura
+        @SuppressWarnings("unchecked")
+        java.util.List<Object> enemigos = (java.util.List<Object>) get("enemies");
+        enemigos.clear();
+        set("currentBoss", null);
+        set("sanity", 0.0);
+
+        int vidaInicial = (Integer) get("playerHealth");
+        for (int i = 0; i < 1800; i++) {
+            panel.actionPerformed(tick);
+            set("sanity", 0.0);           // se mantiene en el suelo a proposito
+            set("isJumpscareActive", false);
+        }
+        panel.paint(g);
+
+        boolean muerto = (Boolean) get("isDead");
+        int vidaFinal = (Integer) get("playerHealth");
+
+        if (!muerto && vidaFinal >= vidaInicial) {
+            ok("Cordura a 0 durante 30 segundos: Nox sigue vivo con " + vidaFinal + " de vida");
+        } else {
+            fail("Cordura a 0 mato a Nox (muerto=" + muerto + " vida=" + vidaInicial + "->" + vidaFinal + ")");
+        }
+
+        // Y la vista tiene que cerrarse de verdad
+        Method radio = LabyrinthPanel.class.getDeclaredMethod("lightRadius");
+        radio.setAccessible(true);
+        set("lightsOutTimer", 0);
+        set("scarePhase", 0);
+        set("animationFrame", 0);
+
+        set("sanity", 100.0);
+        float conCordura = (Float) radio.invoke(panel);
+        set("sanity", 45.0);
+        float mitad = (Float) radio.invoke(panel);
+        set("sanity", 0.0);
+        float sinCordura = (Float) radio.invoke(panel);
+
+        boolean seCierra = sinCordura < conCordura * 0.35 && mitad < conCordura && sinCordura > 50;
+        String detalle = String.format("100%% -> %.0f px | 45%% -> %.0f px | 0%% -> %.0f px",
+                                       conCordura, mitad, sinCordura);
+        if (seCierra) ok("La vista se cierra con la cordura: " + detalle);
+        else fail("La vista no se cierra bien: " + detalle);
+
+        set("sanity", 100.0);
+    }
+
     public static void main(String[] args) throws Exception {
         panel = new LabyrinthPanel(null);
         panel.setSize(1024, 768);
@@ -1010,6 +1073,7 @@ public class SmokeTest {
         comprobarBonusFamilia();
         comprobarLogrosYOpciones();
         comprobarPantallasDeHistoria(tick, g);
+        comprobarCorduraCeroNoMata(tick, g);
         comprobarAlucinaciones(tick, g);
         comprobarSustoPorFases(tick, g);
         comprobarEscalado();
