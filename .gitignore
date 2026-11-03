@@ -1,21 +1,31 @@
-# Archivos compilados de Java
+# ---- Archivos compilados de Java ----
 *.class
 
-# Resultados de CREAR-EJECUTABLE.bat
+# ---- Resultados de CREAR-EJECUTABLE.bat ----
+# El .exe y el .jar se publican en la seccion Releases de GitHub,
+# no dentro del repositorio: ocupan 28 MB y harian lento cada clon.
 build/
 ejecutable/
 Exodo.jar
 *.zip
 
-# Partida guardada (es de cada jugador, no del proyecto)
+# ---- Datos de cada jugador (no son del proyecto) ----
 exodo_save.properties
+exodo_config.properties
+exodo_logros.properties
 
-# Datos del servidor Python
+# ---- Datos del servidor Python ----
 server_data.json
 __pycache__/
 *.pyc
 
-# Carpetas de entorno
+# ---- Salidas temporales de las pruebas ----
+salida*.txt
+resultado*.txt
+run*.txt
+flaky.txt
+
+# ---- Carpetas de entorno ----
 .venv/
 venv/
 bin/
