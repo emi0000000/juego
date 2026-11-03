@@ -258,10 +258,17 @@ public class SmokeTest {
             int pctQuieto = framesLejos == 0 ? 0 : framesQuieto * 100 / framesLejos;
             double acercamiento = distInicial <= 0 ? 0 : (1 - distFinal / distInicial) * 100;
 
-            boolean bien = pctQuieto < 40 && (distFinal < 130 || acercamiento > 55);
+            // Si llego hasta Nox, no estaba atascado, y el porcentaje da igual: un
+            // jefe que cubre los 500 px en 40 fotogramas deja solo 40 medidas de
+            // "estaba lejos", y sobre tan pocas el porcentaje es puro ruido.
+            // El atasco solo se juzga cuando NO consiguio llegar.
+            boolean llego = distFinal < 130;
+            boolean bien = llego || (acercamiento > 55 && pctQuieto < 40);
+
             String detalle = String.format(
-                "recorrio %.0f px, se acerco %.0f%% (de %.0f a %.0f), atascado el %d%% del tiempo que estuvo lejos",
-                recorrido, acercamiento, distInicial, distFinal, pctQuieto);
+                "recorrio %.0f px, se acerco %.0f%% (de %.0f a %.0f), %d frames lejos"
+                + " y quieto el %d%% de ellos",
+                recorrido, acercamiento, distInicial, distFinal, framesLejos, pctQuieto);
 
             if (bien) {
                 ok("Jefe del barrio " + lvl + " persigue bien: " + detalle);

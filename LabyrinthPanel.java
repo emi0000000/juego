@@ -1411,8 +1411,18 @@ public class LabyrinthPanel extends JPanel implements ActionListener, KeyListene
 
         // Los jefes siguen una ruta calculada; los demás solo cuando se atascan
         boolean wantsPath = en.isBoss || en.stuckFrames > 18;
-        if (wantsPath && --en.pathTimer <= 0 && pathBudget > 0) {
-            pathBudget--;
+
+        // El jefe nunca hace cola por el presupuesto: como mucho hay uno por barrio,
+        // así que su ruta cuesta un cálculo cada 14 fotogramas y poco más.
+        //
+        // Antes sí lo compartía, y como se añade el último a la lista de enemigos,
+        // en barrios con muchos perros atascados (el basurero, con sus montañas de
+        // basura) los normales le gastaban los cuatro cálculos y el jefe se quedaba
+        // sin ruta: volvía al método tonto y se iba dando vueltas sin llegar nunca.
+        boolean tienePermiso = en.isBoss || pathBudget > 0;
+
+        if (wantsPath && --en.pathTimer <= 0 && tienePermiso) {
+            if (!en.isBoss) pathBudget--;
             en.pathTimer = 14;
             int[] step = nextStepToPlayer(en);
             en.pathTileX = step == null ? -1 : step[0];
